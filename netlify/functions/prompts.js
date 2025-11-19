@@ -1,5 +1,3 @@
-const { createClient } = require('@supabase/supabase-js');
-
 const jsonHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -12,6 +10,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: jsonHeaders };
   }
+
+  // ESM-only package: dynamically import inside handler for CJS functions
+  const { createClient } = await import('@supabase/supabase-js');
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
@@ -26,15 +27,18 @@ exports.handler = async (event) => {
 
   const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
-  // Netlify invokes functions at '/.netlify/functions/<name>'
-  const base = '/.netlify/functions/prompts';
-  const subpath = event.path && event.path.startsWith(base)
-    ? event.path.slice(base.length)
-    : event.path || '/';
+  // Normalize path after '/.netlify/functions/prompts'
+  const baseMatch = /\.netlify\/functions\/prompts(.*)$/;
+  let subpath = '/';
+  try {
+    const m = (event.path || '/').match(baseMatch);
+    subpath = (m && m[1]) || '/';
+  } catch {}
+  if (!subpath.startsWith('/')) subpath = '/' + subpath;
 
   try {
-    // GET /api/prompts -> list
-    if (event.httpMethod === 'GET' && subpath === '/prompts') {
+    // GET /api or /api/prompts -> list
+    if (event.httpMethod === 'GET' && (subpath === '/' || subpath === '/prompts')) {
       const { data, error } = await supabase
         .from('prompts')
         .select('*')
@@ -102,9 +106,9 @@ exports.handler = async (event) => {
     }
 
     // Not found
-    return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', path: subpath }) };
+    return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', method: event.httpMethod, path: subpath }) };
   } catch (err) {
     console.error('Function error:', err);
-    return { statusCode: 500, headers: jsonHeaders, body: JSON.stringify({ error: 'Server error', details: String(err.message || err) }) };
+    return { statusCode: 500, headers: jsonHeaders, body: JSON.stringify({ error: 'Server error', details: String(err && err.message ? err.message : err) }) };
   }
 };

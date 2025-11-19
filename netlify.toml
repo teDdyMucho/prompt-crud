@@ -11,7 +11,15 @@
   command = "npm run build"
   publish = "build"
 
+[build.environment]
+  NODE_VERSION = "18"
+
 # Redirect all routes to index.html for SPA routing
+[[redirects]]
+  from = "/api"
+  to = "/.netlify/functions/prompts"
+  status = 200
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/prompts/:splat"
