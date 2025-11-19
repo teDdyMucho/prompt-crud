@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Determine API base URL
+// Priority: REACT_APP_API_BASE_URL -> (production) '/api' (Netlify Functions via redirects) -> (dev) localhost
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL ||
+  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api');
+
+if (!process.env.REACT_APP_API_BASE_URL) {
+  // Helpful hint in console when running without the env var set
+  // In production on Netlify, we fall back to '/api' which proxies to Netlify Functions
+  // In development, we fall back to http://localhost:5000/api
+  console.warn('REACT_APP_API_BASE_URL is not set. Using default:', API_BASE_URL);
+}
 
 function App() {
   const [prompts, setPrompts] = useState([]);

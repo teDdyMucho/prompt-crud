@@ -1,3 +1,7 @@
+  
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 # Netlify configuration for deploying the React client
 # Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
 
@@ -8,6 +12,11 @@
   publish = "build"
 
 # Redirect all routes to index.html for SPA routing
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/prompts/:splat"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
