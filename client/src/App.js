@@ -38,11 +38,25 @@ function App() {
       } else {
         setLoading(true);
       }
-      const response = await fetch(`${API_BASE_URL}/prompts`);
-      const data = await response.json();
-      setPrompts(data);
+      const response = await fetch(`${API_BASE_URL}/prompts`, {
+        headers: { Accept: 'application/json' },
+      });
+      const text = await response.text();
+      let data = [];
+      try {
+        data = text ? JSON.parse(text) : [];
+      } catch (e) {
+        console.error('Invalid JSON from API:', text);
+        throw new Error('Invalid JSON from API');
+      }
+      if (!response.ok) {
+        const msg = typeof data === 'object' && data && data.error ? data.error : text;
+        throw new Error(`HTTP ${response.status}: ${msg}`);
+      }
+      setPrompts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching prompts:', error);
+      setPrompts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -245,7 +259,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {prompts.map((prompt, index) => (
+                    {(Array.isArray(prompts) ? prompts : []).map((prompt, index) => (
                       <tr key={prompt.id} className="group hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 transform hover:scale-[1.01]">
                         <td className="px-8 py-6 whitespace-nowrap">
                           <div className="flex items-center">

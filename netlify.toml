@@ -4,22 +4,21 @@
   node_bundler = "esbuild"
 
 [functions.environment]
-  # IMPORTANT: For security, it's better to set these in the Netlify dashboard
-  # Site settings -> Environment variables, rather than committing secrets.
-  # Replace the placeholders below ONLY if you accept storing secrets in git.
   SUPABASE_URL = "https://zwoyzebbimvivcxuawit.supabase.co"
   SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3b3l6ZWJiaW12aXZjeHVhd2l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0NzYwNzksImV4cCI6MjA3OTA1MjA3OX0.-m-y4_n_7x-usfTWzaGBombAfc4SfnGNSqzb4T31hhU"
 # Netlify configuration for deploying the React client
 # Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
 
 [build]
-  # Build from the React client directory so Netlify installs dependencies there
-  base = "client"
-  command = "npm run build"
-  publish = "build"
+  # Build CRA app located in client and publish its build output
+  command = "npm run build --prefix client"
+  publish = "client/build"
 
 [build.environment]
   NODE_VERSION = "18"
+  # Expose Supabase envs at build/runtime (also available to functions)
+  SUPABASE_URL = "https://zwoyzebbimvivcxuawit.supabase.co"
+  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3b3l6ZWJiaW12aXZjeHVhd2l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0NzYwNzksImV4cCI6MjA3OTA1MjA3OX0.-m-y4_n_7x-usfTWzaGBombAfc4SfnGNSqzb4T31hhU"
 
 # Redirect all routes to index.html for SPA routing
 [[redirects]]

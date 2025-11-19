@@ -11,9 +11,6 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers: jsonHeaders };
   }
 
-  // ESM-only package: dynamically import inside handler for CJS functions
-  const { createClient } = await import('@supabase/supabase-js');
-
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
@@ -25,7 +22,15 @@ exports.handler = async (event) => {
     };
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+  let supabase;
+  try {
+    // ESM-only package: dynamically import inside handler for CJS functions
+    const { createClient } = await import('@supabase/supabase-js');
+    supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+  } catch (importErr) {
+    console.error('Supabase import/init error:', importErr);
+    return { statusCode: 500, headers: jsonHeaders, body: JSON.stringify({ error: 'Initialization error', details: String(importErr && importErr.message ? importErr.message : importErr) }) };
+  }
 
   // Normalize path after '/.netlify/functions/prompts'
   const baseMatch = /\.netlify\/functions\/prompts(.*)$/;
