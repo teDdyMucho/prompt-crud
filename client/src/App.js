@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
 // Determine API base URL
-// Priority: REACT_APP_API_BASE_URL -> (production) '/api' (Netlify Functions via redirects) -> (dev) localhost
+// Priority: REACT_APP_API_BASE_URL -> (production) '/.netlify/functions/prompts' -> (dev) localhost
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
-  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api');
+  (process.env.NODE_ENV === 'production' ? '/.netlify/functions/prompts' : 'http://localhost:5000/api');
 
 if (!process.env.REACT_APP_API_BASE_URL) {
   // Helpful hint in console when running without the env var set

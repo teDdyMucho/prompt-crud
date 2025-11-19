@@ -37,6 +37,22 @@ exports.handler = async (event) => {
   if (!subpath.startsWith('/')) subpath = '/' + subpath;
 
   try {
+    // GET /api/health -> quick diagnostics (does not leak secrets)
+    if (event.httpMethod === 'GET' && subpath === '/health') {
+      return {
+        statusCode: 200,
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          ok: true,
+          env: {
+            SUPABASE_URL_SET: Boolean(supabaseUrl),
+            SUPABASE_ANON_KEY_SET: Boolean(supabaseKey),
+            node: process.version,
+          },
+        }),
+      };
+    }
+
     // GET /api or /api/prompts -> list
     if (event.httpMethod === 'GET' && (subpath === '/' || subpath === '/prompts')) {
       const { data, error } = await supabase
