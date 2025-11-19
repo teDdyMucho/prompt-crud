@@ -1,0 +1,26 @@
+# Netlify configuration for deploying the React client
+# Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Run the React build from the root using --prefix so Netlify installs at root but builds the client app
+  command = "npm run build --prefix client"
+  publish = "client/build"
+
+# Redirect all routes to index.html for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Helpful security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'"
+
+# If you plan to add Netlify Functions later, uncomment and set the directory
+# [functions]
+#   directory = "netlify/functions"
