@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+
 const jsonHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -5,7 +7,7 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 };
 
-exports.handler = async (event) => {
+export async function handler(event) {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: jsonHeaders };
@@ -22,15 +24,7 @@ exports.handler = async (event) => {
     };
   }
 
-  let supabase;
-  try {
-    // ESM-only package: dynamically import inside handler for CJS functions
-    const { createClient } = await import('@supabase/supabase-js');
-    supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
-  } catch (importErr) {
-    console.error('Supabase import/init error:', importErr);
-    return { statusCode: 500, headers: jsonHeaders, body: JSON.stringify({ error: 'Initialization error', details: String(importErr && importErr.message ? importErr.message : importErr) }) };
-  }
+  const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
   // Normalize path after '/.netlify/functions/prompts'
   const baseMatch = /\.netlify\/functions\/prompts(.*)$/;
