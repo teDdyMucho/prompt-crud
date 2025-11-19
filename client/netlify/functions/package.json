@@ -1,9 +1,0 @@
-{
-  "name": "prompt-management-functions-client-base",
-  "private": true,
-  "version": "1.0.0",
-  "license": "MIT",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.48.0"
-  }
-}
