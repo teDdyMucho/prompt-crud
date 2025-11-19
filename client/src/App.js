@@ -175,19 +175,19 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
         {/* Modern Header with Gradient */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 mb-8 overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-8 py-6">
-            <div className="flex justify-between items-center">
+          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-4 sm:px-8 py-4 sm:py-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Prompt Management</h1>
                 <p className="text-indigo-100 text-sm">Manage and organize your AI prompts efficiently</p>
               </div>
-              <div className="flex space-x-4">
+              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="group relative px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all duration-300 transform hover:scale-105 hover:shadow-lg border border-white/30"
+                  className="group relative px-5 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all duration-300 transform hover:scale-105 hover:shadow-lg border border-white/30"
                 >
                   <span className="flex items-center space-x-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,7 +199,7 @@ function App() {
                 <button
                   onClick={() => fetchPrompts(true)}
                   disabled={refreshing}
-                  className="group relative px-6 py-3 bg-white/10 backdrop-blur-sm text-white rounded-xl hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="group relative px-5 py-3 bg-white/10 backdrop-blur-sm text-white rounded-xl hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="flex items-center space-x-2">
                     <svg className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,18 +213,19 @@ function App() {
           </div>
 
           {/* Enhanced Table */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {loading ? (
               <div className="flex flex-col justify-center items-center py-16">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
                 <div className="text-gray-600 font-medium">Loading prompts...</div>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-200/50">
+              <div className="overflow-x-auto">
+                <div className="min-w-[720px] overflow-hidden rounded-xl border border-gray-200/50">
                 <table className="w-full">
                   <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                     <tr>
-                      <th className="px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -232,7 +233,7 @@ function App() {
                           <span>Name</span>
                         </div>
                       </th>
-                      <th className="px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -240,7 +241,7 @@ function App() {
                           <span>Category</span>
                         </div>
                       </th>
-                      <th className="px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -248,7 +249,7 @@ function App() {
                           <span>Prompt Content</span>
                         </div>
                       </th>
-                      <th className="px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden xs:table-cell sm:table-cell">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -260,8 +261,8 @@ function App() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {(Array.isArray(prompts) ? prompts : []).map((prompt, index) => (
-                      <tr key={prompt.id} className="group hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 transform hover:scale-[1.01]">
-                        <td className="px-8 py-6 whitespace-nowrap">
+                      <tr key={prompt.id} className="group hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
                               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
@@ -269,12 +270,12 @@ function App() {
                               </div>
                             </div>
                             <div className="ml-4">
-                              <div className="text-sm font-semibold text-gray-900">{prompt.name}</div>
-                              <div className="text-xs text-gray-500">ID: {prompt.id.slice(0, 8)}...</div>
+                              <div className="text-sm sm:text-base font-semibold text-gray-900">{prompt.name}</div>
+                              <div className="text-[10px] sm:text-xs text-gray-500">ID: {prompt.id.slice(0, 8)}...</div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-8 py-6 whitespace-nowrap">
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
                           <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
                             prompt.description === 'Escalation' ? 'bg-red-100 text-red-800' :
                             prompt.description === 'Support' ? 'bg-blue-100 text-blue-800' :
@@ -285,7 +286,7 @@ function App() {
                             {prompt.description}
                           </span>
                         </td>
-                        <td className="px-8 py-6 text-sm text-gray-900 max-w-md">
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 text-sm text-gray-900 max-w-md hidden sm:table-cell">
                           <div className="line-clamp-2 leading-relaxed">
                             {truncateText(prompt.prompt)}
                           </div>
@@ -300,7 +301,7 @@ function App() {
                             <span>View Full Prompt</span>
                           </button>
                         </td>
-                        <td className="px-8 py-6 whitespace-nowrap text-sm space-x-3">
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap text-sm space-x-3 hidden xs:table-cell sm:table-cell">
                           <button
                             onClick={() => openEditModal(prompt)}
                             className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all duration-200 transform hover:scale-105 font-medium"
@@ -324,6 +325,7 @@ function App() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>
