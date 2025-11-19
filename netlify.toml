@@ -2,9 +2,10 @@
 # Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
 
 [build]
-  # Run the React build from the root using --prefix so Netlify installs at root but builds the client app
-  command = "npm run build --prefix client"
-  publish = "client/build"
+  # Build from the React client directory so Netlify installs dependencies there
+  base = "client"
+  command = "npm run build"
+  publish = "build"
 
 # Redirect all routes to index.html for SPA routing
 [[redirects]]
