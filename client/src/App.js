@@ -181,17 +181,7 @@ function App() {
     setShowViewModal(true);
   };
 
-  // Truncate text for table display
-  const truncateText = (text, maxLines = 2) => {
-    const words = text.split(' ');
-    const wordsPerLine = 8;
-    const maxWords = maxLines * wordsPerLine;
-    
-    if (words.length > maxWords) {
-      return words.slice(0, maxWords).join(' ') + '...';
-    }
-    return text;
-  };
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
