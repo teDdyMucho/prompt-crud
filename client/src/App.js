@@ -195,31 +195,31 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {/* Modern Header with Gradient */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 mb-8 overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-4 sm:px-8 py-4 sm:py-6">
+        <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/30 mb-10 overflow-hidden">
+          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-6 sm:px-10 py-6 sm:py-8">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Prompt Management</h1>
-                <p className="text-indigo-100 text-sm">Manage and organize your AI prompts efficiently</p>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 sm:mb-3 tracking-tight">Prompt Management</h1>
+                <p className="text-indigo-100 text-sm sm:text-base font-medium">Manage and organize your AI prompts efficiently</p>
               </div>
               <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
-                <div className="relative w-full sm:w-72">
+                <div className="relative w-full sm:w-80">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search prompts..."
-                    className="w-full pl-10 pr-3 py-3 bg-white/15 text-white placeholder:text-indigo-100/80 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                    className="w-full pl-11 pr-4 py-3.5 bg-white/20 text-white placeholder:text-indigo-100/70 rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/60 focus:border-transparent focus:bg-white/25 transition-all"
                   />
-                  <svg className="w-5 h-5 text-white/80 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                  <svg className="w-5 h-5 text-white/90 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="group relative px-5 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all duration-300 transform hover:scale-105 hover:shadow-lg border border-white/30"
+                  className="group relative px-4 sm:px-6 py-3 sm:py-3.5 bg-white text-indigo-600 rounded-xl hover:bg-white/95 transition-all duration-200 transform hover:scale-105 hover:shadow-xl border border-white/50 font-semibold w-full sm:w-auto justify-center"
                 >
                   <span className="flex items-center space-x-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -231,7 +231,7 @@ function App() {
                 <button
                   onClick={() => fetchPrompts(true)}
                   disabled={refreshing}
-                  className="group relative px-5 py-3 bg-white/10 backdrop-blur-sm text-white rounded-xl hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="group relative px-4 sm:px-6 py-3 sm:py-3.5 bg-white/15 backdrop-blur-sm text-white rounded-xl hover:bg-white/25 transition-all duration-200 transform hover:scale-105 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed font-medium w-full sm:w-auto justify-center"
                 >
                   <span className="flex items-center space-x-2">
                     <svg className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,19 +245,93 @@ function App() {
           </div>
 
           {/* Enhanced Table */}
-          <div className="p-4 sm:p-6">
+          <div className="p-6 sm:p-8">
             {loading ? (
-              <div className="flex flex-col justify-center items-center py-16">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                <div className="text-gray-600 font-medium">Loading prompts...</div>
+              <div className="flex flex-col justify-center items-center py-24">
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200"></div>
+                  <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-indigo-600 absolute top-0 left-0"></div>
+                </div>
+                <div className="text-gray-700 font-semibold mt-6 text-lg">Loading prompts...</div>
+                <div className="text-gray-500 text-sm mt-2">Please wait a moment</div>
+              </div>
+            ) : filteredPrompts.length === 0 ? (
+              <div className="flex flex-col justify-center items-center py-24">
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full p-6 mb-6">
+                  <svg className="w-16 h-16 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{searchQuery ? 'No prompts found' : 'No prompts yet'}</h3>
+                <p className="text-gray-600 text-center max-w-md mb-6">
+                  {searchQuery ? `No prompts match "${searchQuery}". Try a different search term.` : 'Get started by creating your first prompt template.'}
+                </p>
+                {!searchQuery && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 font-semibold shadow-lg"
+                  >
+                    Create Your First Prompt
+                  </button>
+                )}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <div className="min-w-[720px] overflow-hidden rounded-xl border border-gray-200/50">
+              <>
+              {/* Mobile Card View */}
+              <div className="block lg:hidden space-y-4">
+                {filteredPrompts.map((prompt) => (
+                  <div key={prompt.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center">
+                        <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md mr-3">
+                          <span className="text-white font-bold text-base">{prompt.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900">{prompt.name}</h3>
+                          <p className="text-xs text-gray-500 mt-0.5">ID: {prompt.id.slice(0, 8)}...</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <span className="text-xs font-semibold text-gray-500 uppercase">Location ID</span>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{prompt.location_id}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-500 uppercase">Business Name</span>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{prompt.business_name}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={() => openEditModal(prompt)}
+                        className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold shadow-sm text-sm"
+                      >
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(prompt)}
+                        className="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all font-semibold shadow-sm text-sm"
+                      >
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto">
+                <div className="min-w-[720px] overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
                 <table className="w-full">
-                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-10">
+                  <thead className="bg-gradient-to-r from-gray-50 via-slate-50 to-gray-100 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -266,12 +340,12 @@ function App() {
                         </div>
                       </th>
                       
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <span>Location ID</span>
                         </div>
                       </th>
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <span>Business Name</span>
                         </div>
@@ -298,55 +372,55 @@ function App() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {filteredPrompts.map((prompt, index) => (
-                      <tr key={prompt.id} className="group odd:bg-white even:bg-gray-50 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
+                      <tr key={prompt.id} className="group odd:bg-white even:bg-slate-50/50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 transition-all duration-200 border-b border-gray-100 last:border-0">
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
-                                <span className="text-white font-semibold text-sm">{prompt.name.charAt(0)}</span>
+                            <div className="flex-shrink-0 h-12 w-12">
+                              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
+                                <span className="text-white font-bold text-base">{prompt.name.charAt(0).toUpperCase()}</span>
                               </div>
                             </div>
                             <div className="ml-4">
-                              <div className="text-sm sm:text-base font-semibold text-gray-900">{prompt.name}</div>
-                              <div className="text-[10px] sm:text-xs text-gray-500">ID: {prompt.id.slice(0, 8)}...</div>
+                              <div className="text-sm sm:text-base font-bold text-gray-900">{prompt.name}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">ID: {prompt.id.slice(0, 8)}...</div>
                             </div>
                           </div>
                         </td>
                         
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{prompt.location_id}</span>
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
+                          <span className="text-sm font-medium text-gray-700">{prompt.location_id}</span>
                         </td>
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">{prompt.business_name}</span>
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
+                          <span className="text-sm font-medium text-gray-900">{prompt.business_name}</span>
                         </td>
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 text-sm text-gray-900 max-w-md hidden sm:table-cell">
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 text-sm text-gray-700 max-w-md hidden xl:table-cell">
                           <div className="line-clamp-2 leading-relaxed">
                             {prompt.knowledgebase}
                           </div>
                         </td>
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 text-sm text-gray-900 max-w-md hidden sm:table-cell">
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 text-sm text-gray-700 max-w-md hidden xl:table-cell">
                           <div className="line-clamp-2 leading-relaxed">
                             {JSON.stringify(prompt.inventory)}
                           </div>
                         </td>
-                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap text-sm space-x-3 hidden xs:table-cell sm:table-cell">
+                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap text-sm space-x-2">
                           <button
                             onClick={() => openEditModal(prompt)}
-                            className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all duration-200 transform hover:scale-105 font-medium"
+                            className="inline-flex items-center px-3 lg:px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-sm hover:shadow-md text-sm"
                           >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 lg:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
-                            Edit
+                            <span className="hidden lg:inline">Edit</span>
                           </button>
                           <button
                             onClick={() => openDeleteModal(prompt)}
-                            className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-all duration-200 transform hover:scale-105 font-medium"
+                            className="inline-flex items-center px-3 lg:px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-sm hover:shadow-md text-sm"
                           >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 lg:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
-                            Delete
+                            <span className="hidden lg:inline">Delete</span>
                           </button>
                         </td>
                       </tr>
@@ -355,6 +429,7 @@ function App() {
                 </table>
                 </div>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -362,24 +437,26 @@ function App() {
 
       {/* Enhanced Add Prompt Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp">
-            <div className="flex items-center mb-6">
-              <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn p-2 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden transform animate-slideUp">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6">
+              <div className="flex items-center">
+              <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white/20 backdrop-blur-sm rounded-xl sm:rounded-2xl flex items-center justify-center mr-3 sm:mr-4">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Add New Prompt</h2>
-                <p className="text-gray-600 text-sm">Create a new prompt template for your workflow</p>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white tracking-tight">Add New Prompt</h2>
+                <p className="text-indigo-100 text-sm sm:text-base mt-0.5 sm:mt-1 hidden sm:block">Create a new prompt template for your workflow</p>
+              </div>
               </div>
             </div>
             
-            <form onSubmit={handleAddPrompt} className="space-y-6">
+            <form onSubmit={handleAddPrompt} className="p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 overflow-y-auto max-h-[calc(95vh-140px)] sm:max-h-[calc(90vh-180px)]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
                     <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
@@ -390,18 +467,18 @@ function App() {
                     name="name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 text-gray-900 placeholder:text-gray-400"
                     placeholder="Enter prompt name..."
                     required
                   />
                 </div>
-                
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
                     <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                     Location ID
                   </label>
@@ -410,15 +487,15 @@ function App() {
                     name="location_id"
                     value={formData.location_id}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 text-gray-900 placeholder:text-gray-400"
                     placeholder="Enter location ID..."
                   />
                   
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
                     <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
                     Business Name
                   </label>
@@ -427,16 +504,16 @@ function App() {
                     name="business_name"
                     value={formData.business_name}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 text-gray-900 placeholder:text-gray-400"
                     placeholder="Enter business name..."
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                <label className="block text-sm font-bold text-gray-800 mb-2">
                   <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   Prompt Content
                 </label>
@@ -444,16 +521,16 @@ function App() {
                   name="prompt"
                   value={formData.prompt}
                   onChange={handleInputChange}
-                  rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  rows={6}
+                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 resize-y min-h-[120px] text-gray-900 placeholder:text-gray-400"
                   placeholder="Enter your prompt content here..."
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                <label className="block text-sm font-bold text-gray-800 mb-2">
                   <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                   Knowledgebase
                 </label>
@@ -461,16 +538,16 @@ function App() {
                   name="knowledgebase"
                   value={formData.knowledgebase}
                   onChange={handleInputChange}
-                  rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  rows={6}
+                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 resize-y min-h-[120px] text-gray-900 placeholder:text-gray-400"
                   placeholder="Enter your knowledgebase here..."
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                <label className="block text-sm font-bold text-gray-800 mb-2">
                   <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
                   Inventory
                 </label>
@@ -478,26 +555,26 @@ function App() {
                   name="inventory"
                   value={formData.inventory}
                   onChange={handleInputChange}
-                  rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  rows={6}
+                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white hover:border-gray-300 resize-y min-h-[120px] text-gray-900 placeholder:text-gray-400"
                   placeholder="Enter your inventory here..."
                   required
                 />
               </div>
-              <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 sm:pt-6 border-t-2 border-gray-100 bg-gray-50 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 -mb-4 sm:-mb-6 lg:-mb-8 pb-4 sm:pb-6 mt-6 sm:mt-8">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
                     setFormData({ name: '', prompt: '', location_id: '', business_name: '', knowledgebase: '', inventory: '' });
                   }}
-                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 font-medium"
+                  className="w-full sm:w-auto px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 hover:border-gray-400 transition-all font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 font-semibold shadow-lg"
+                  className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all font-bold shadow-lg hover:shadow-xl"
                 >
                   Create Prompt
                 </button>
