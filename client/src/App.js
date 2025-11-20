@@ -175,12 +175,6 @@ function App() {
     setShowDeleteModal(true);
   };
 
-  // Open view modal
-  const openViewModal = (prompt) => {
-    setSelectedPrompt(prompt);
-    setShowViewModal(true);
-  };
-
   
 
   return (
