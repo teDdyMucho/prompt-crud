@@ -56,7 +56,7 @@ export async function handler(event) {
     if (event.httpMethod === 'GET' && (subpath === '/' || subpath === '/prompts')) {
       const { data, error } = await supabase
         .from('prompts')
-        .select('*')
+        .select('id, name, prompt, location_id, business_name, knowledgebase, inventory')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -65,18 +65,34 @@ export async function handler(event) {
 
     // POST /api/prompts -> create
     if (event.httpMethod === 'POST' && subpath === '/prompts') {
-      const { name, description, prompt } = JSON.parse(event.body || '{}');
-      if (!name || !description || !prompt) {
-        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name, description, and prompt are required' }) };
+      const { name, prompt, location_id, business_name, knowledgebase, inventory } = JSON.parse(event.body || '{}');
+      if (!name || !prompt) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name and prompt are required' }) };
       }
 
       const { data, error } = await supabase
         .from('prompts')
-        .insert([{ name, description, prompt }])
+        .insert([{ name, prompt, location_id, business_name, knowledgebase, inventory }])
         .select()
         .single();
 
       if (error) throw error;
+
+      // If location_id was not provided, set it equal to the generated id
+      if (!location_id && data && data.id) {
+        const { data: updated, error: updErr } = await supabase
+          .from('prompts')
+          .update({ location_id: data.id })
+          .eq('id', data.id)
+          .select()
+          .single();
+        if (updErr) {
+          // Not fatal for the create, but return meaningful info
+          return { statusCode: 201, headers: jsonHeaders, body: JSON.stringify({ ...data, _warning: 'Failed to auto-set location_id', _details: String(updErr.message || updErr) }) };
+        }
+        return { statusCode: 201, headers: jsonHeaders, body: JSON.stringify(updated) };
+      }
+
       return { statusCode: 201, headers: jsonHeaders, body: JSON.stringify(data) };
     }
 
@@ -84,14 +100,14 @@ export async function handler(event) {
     const putMatch = event.httpMethod === 'PUT' && /^\/prompts\/([^\/]+)$/.test(subpath);
     if (putMatch) {
       const id = subpath.split('/')[2];
-      const { name, description, prompt } = JSON.parse(event.body || '{}');
-      if (!name || !description || !prompt) {
-        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name, description, and prompt are required' }) };
+      const { name, prompt, location_id, business_name, knowledgebase, inventory } = JSON.parse(event.body || '{}');
+      if (!name || !prompt) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name and prompt are required' }) };
       }
 
       const { data, error } = await supabase
         .from('prompts')
-        .update({ name, description, prompt })
+        .update({ name, prompt, location_id, business_name, knowledgebase, inventory })
         .eq('id', id)
         .select()
         .single();

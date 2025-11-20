@@ -14,7 +14,7 @@ app.get('/api/prompts', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .select('*')
+      .select('id, name, prompt, location_id, business_name, knowledgebase, inventory, created_at')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -31,16 +31,16 @@ app.get('/api/prompts', async (req, res) => {
 
 // POST create new prompt in Supabase
 app.post('/api/prompts', async (req, res) => {
-  const { name, description, prompt } = req.body;
+  const { name, prompt, location_id, business_name, knowledgebase, inventory } = req.body;
 
-  if (!name || !description || !prompt) {
-    return res.status(400).json({ error: 'Name, description, and prompt are required' });
+  if (!name || !prompt) {
+    return res.status(400).json({ error: 'Name and prompt are required' });
   }
 
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .insert([{ name, description, prompt }])
+      .insert([{ name, prompt, location_id, business_name, knowledgebase, inventory }])
       .select()
       .single();
 
@@ -59,16 +59,16 @@ app.post('/api/prompts', async (req, res) => {
 // PUT update prompt in Supabase
 app.put('/api/prompts/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, description, prompt } = req.body;
+  const { name, prompt, location_id, business_name, knowledgebase, inventory } = req.body;
 
-  if (!name || !description || !prompt) {
-    return res.status(400).json({ error: 'Name, description, and prompt are required' });
+  if (!name || !prompt) {
+    return res.status(400).json({ error: 'Name and prompt are required' });
   }
 
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .update({ name, description, prompt })
+      .update({ name, prompt, location_id, business_name, knowledgebase, inventory })
       .eq('id', id)
       .select()
       .single();

@@ -17,6 +17,7 @@ function App() {
   const [prompts, setPrompts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -24,11 +25,13 @@ function App() {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    prompt: ''
+    prompt: '',
+    location_id: '',
+    business_name: '',
+    knowledgebase: '',
+    inventory: ''
   });
 
-  const descriptionOptions = ['Escalation', 'Support', 'Reminder', 'Follow-up', 'Pending'];
 
   // Fetch prompts from API
   const fetchPrompts = async (isRefresh = false) => {
@@ -67,6 +70,20 @@ function App() {
     fetchPrompts();
   }, []);
 
+  const filteredPrompts = (Array.isArray(prompts) ? prompts : []).filter(p => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const fields = [
+      p.name,
+      p.location_id,
+      p.business_name,
+      p.knowledgebase,
+      typeof p.inventory === 'string' ? p.inventory : JSON.stringify(p.inventory || {}),
+      p.prompt,
+    ];
+    return fields.some(f => (f || '').toString().toLowerCase().includes(q));
+  });
+
   // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -90,7 +107,7 @@ function App() {
       
       if (response.ok) {
         setShowAddModal(false);
-        setFormData({ name: '', description: '', prompt: '' });
+        setFormData({ name: '', prompt: '', location_id: '', business_name: '', knowledgebase: '', inventory: '' });
         fetchPrompts();
       }
     } catch (error) {
@@ -113,7 +130,7 @@ function App() {
       if (response.ok) {
         setShowEditModal(false);
         setSelectedPrompt(null);
-        setFormData({ name: '', description: '', prompt: '' });
+        setFormData({ name: '', prompt: '', location_id: '', business_name: '', knowledgebase: '', inventory: '' });
         fetchPrompts();
       }
     } catch (error) {
@@ -143,8 +160,11 @@ function App() {
     setSelectedPrompt(prompt);
     setFormData({
       name: prompt.name,
-      description: prompt.description,
-      prompt: prompt.prompt
+      prompt: prompt.prompt,
+      location_id: prompt.location_id,
+      business_name: prompt.business_name,
+      knowledgebase: prompt.knowledgebase,
+      inventory: prompt.inventory
     });
     setShowEditModal(true);
   };
@@ -185,6 +205,18 @@ function App() {
                 <p className="text-indigo-100 text-sm">Manage and organize your AI prompts efficiently</p>
               </div>
               <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
+                <div className="relative w-full sm:w-72">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search prompts..."
+                    className="w-full pl-10 pr-3 py-3 bg-white/15 text-white placeholder:text-indigo-100/80 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                  />
+                  <svg className="w-5 h-5 text-white/80 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                  </svg>
+                </div>
                 <button
                   onClick={() => setShowAddModal(true)}
                   className="group relative px-5 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all duration-300 transform hover:scale-105 hover:shadow-lg border border-white/30"
@@ -223,7 +255,7 @@ function App() {
               <div className="overflow-x-auto">
                 <div className="min-w-[720px] overflow-hidden rounded-xl border border-gray-200/50">
                 <table className="w-full">
-                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-10">
                     <tr>
                       <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
@@ -233,26 +265,31 @@ function App() {
                           <span>Name</span>
                         </div>
                       </th>
+                      
                       <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span>Category</span>
+                          <span>Location ID</span>
+                        </div>
+                      </th>
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                        <div className="flex items-center space-x-2">
+                          <span>Business Name</span>
                         </div>
                       </th>
                       <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
                         <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          <span>Prompt Content</span>
+                          <span>Knowledgebase</span>
+                        </div>
+                      </th>
+                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
+                        <div className="flex items-center space-x-2">
+                          <span>Inventory</span>
                         </div>
                       </th>
                       <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden xs:table-cell sm:table-cell">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                           </svg>
                           <span>Actions</span>
                         </div>
@@ -260,8 +297,8 @@ function App() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {(Array.isArray(prompts) ? prompts : []).map((prompt, index) => (
-                      <tr key={prompt.id} className="group hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
+                    {filteredPrompts.map((prompt, index) => (
+                      <tr key={prompt.id} className="group odd:bg-white even:bg-gray-50 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
                         <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
@@ -275,31 +312,22 @@ function App() {
                             </div>
                           </div>
                         </td>
+                        
                         <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
-                          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-                            prompt.description === 'Escalation' ? 'bg-red-100 text-red-800' :
-                            prompt.description === 'Support' ? 'bg-blue-100 text-blue-800' :
-                            prompt.description === 'Reminder' ? 'bg-yellow-100 text-yellow-800' :
-                            prompt.description === 'Follow-up' ? 'bg-green-100 text-green-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {prompt.description}
-                          </span>
+                          <span className="text-sm text-gray-900">{prompt.location_id}</span>
+                        </td>
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap">
+                          <span className="text-sm text-gray-900">{prompt.business_name}</span>
                         </td>
                         <td className="px-6 sm:px-8 py-4 sm:py-6 text-sm text-gray-900 max-w-md hidden sm:table-cell">
                           <div className="line-clamp-2 leading-relaxed">
-                            {truncateText(prompt.prompt)}
+                            {prompt.knowledgebase}
                           </div>
-                          <button
-                            onClick={() => openViewModal(prompt)}
-                            className="inline-flex items-center space-x-1 text-indigo-600 hover:text-indigo-800 text-xs mt-2 font-medium transition-colors"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            <span>View Full Prompt</span>
-                          </button>
+                        </td>
+                        <td className="px-6 sm:px-8 py-4 sm:py-6 text-sm text-gray-900 max-w-md hidden sm:table-cell">
+                          <div className="line-clamp-2 leading-relaxed">
+                            {JSON.stringify(prompt.inventory)}
+                          </div>
                         </td>
                         <td className="px-6 sm:px-8 py-4 sm:py-6 whitespace-nowrap text-sm space-x-3 hidden xs:table-cell sm:table-cell">
                           <button
@@ -335,7 +363,7 @@ function App() {
       {/* Enhanced Add Prompt Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 transform animate-slideUp">
+          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp">
             <div className="flex items-center mb-6">
               <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-4">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,28 +395,44 @@ function App() {
                     required
                   />
                 </div>
+                
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Location ID
+                  </label>
+                  <input
+                    type="text"
+                    name="location_id"
+                    value={formData.location_id}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    placeholder="Enter location ID..."
+                  />
+                  
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-3">
                     <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Category
+                    Business Name
                   </label>
-                  <select
-                    name="description"
-                    value={formData.description}
+                  <input
+                    type="text"
+                    name="business_name"
+                    value={formData.business_name}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    placeholder="Enter business name..."
                     required
-                  >
-                    <option value="">Select a category</option>
-                    {descriptionOptions.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
-              
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -406,13 +450,46 @@ function App() {
                   required
                 />
               </div>
-              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Knowledgebase
+                </label>
+                <textarea
+                  name="knowledgebase"
+                  value={formData.knowledgebase}
+                  onChange={handleInputChange}
+                  rows={8}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  placeholder="Enter your knowledgebase here..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Inventory
+                </label>
+                <textarea
+                  name="inventory"
+                  value={formData.inventory}
+                  onChange={handleInputChange}
+                  rows={8}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  placeholder="Enter your inventory here..."
+                  required
+                />
+              </div>
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
-                    setFormData({ name: '', description: '', prompt: '' });
+                    setFormData({ name: '', prompt: '', location_id: '', business_name: '', knowledgebase: '', inventory: '' });
                   }}
                   className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 font-medium"
                 >
@@ -433,7 +510,7 @@ function App() {
       {/* Enhanced Edit Prompt Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 transform animate-slideUp">
+          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 transform animate-slideUp max-h-[85vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center mb-6">
               <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mr-4">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -465,28 +542,44 @@ function App() {
                     required
                   />
                 </div>
+                
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Location ID
+                  </label>
+                  <input
+                    type="text"
+                    name="location_id"
+                    value={formData.location_id}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    placeholder="Enter location ID..."
+                  />
+                  
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-3">
                     <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Category
+                    Business Name
                   </label>
-                  <select
-                    name="description"
-                    value={formData.description}
+                  <input
+                    type="text"
+                    name="business_name"
+                    value={formData.business_name}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                    placeholder="Enter business name..."
                     required
-                  >
-                    <option value="">Select a category</option>
-                    {descriptionOptions.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
-              
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -504,14 +597,47 @@ function App() {
                   required
                 />
               </div>
-              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Knowledgebase
+                </label>
+                <textarea
+                  name="knowledgebase"
+                  value={formData.knowledgebase}
+                  onChange={handleInputChange}
+                  rows={8}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  placeholder="Enter your knowledgebase here..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Inventory
+                </label>
+                <textarea
+                  name="inventory"
+                  value={formData.inventory}
+                  onChange={handleInputChange}
+                  rows={8}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  placeholder="Enter your inventory here..."
+                  required
+                />
+              </div>
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => {
                     setShowEditModal(false);
                     setSelectedPrompt(null);
-                    setFormData({ name: '', description: '', prompt: '' });
+                    setFormData({ name: '', prompt: '', location_id: '', business_name: '', knowledgebase: '', inventory: '' });
                   }}
                   className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 font-medium"
                 >
@@ -616,22 +742,23 @@ function App() {
                 <p className="text-blue-800 font-medium text-lg">{selectedPrompt.name}</p>
               </div>
               
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-100">
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
                 <div className="flex items-center mb-3">
-                  <svg className="w-5 h-5 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  <h3 className="font-semibold text-green-900">Location ID</h3>
+                </div>
+                <p className="text-green-800 font-medium text-lg">{selectedPrompt.location_id}</p>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-100">
+                <div className="flex items-center mb-3">
+                  <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <h3 className="font-semibold text-purple-900">Category</h3>
+                  <h3 className="font-semibold text-yellow-900">Business Name</h3>
                 </div>
-                <span className={`inline-flex px-4 py-2 rounded-full text-sm font-semibold ${
-                  selectedPrompt.description === 'Escalation' ? 'bg-red-100 text-red-800' :
-                  selectedPrompt.description === 'Support' ? 'bg-blue-100 text-blue-800' :
-                  selectedPrompt.description === 'Reminder' ? 'bg-yellow-100 text-yellow-800' :
-                  selectedPrompt.description === 'Follow-up' ? 'bg-green-100 text-green-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {selectedPrompt.description}
-                </span>
+                <p className="text-yellow-800 font-medium text-lg">{selectedPrompt.business_name}</p>
               </div>
             </div>
             
@@ -645,6 +772,32 @@ function App() {
               <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
                 <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
                   {selectedPrompt.prompt}
+                </pre>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+              <div className="flex items-center mb-4">
+                <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <h3 className="font-semibold text-blue-900">Knowledgebase</h3>
+              </div>
+              <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
+                  {selectedPrompt.knowledgebase}
+                </pre>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-100">
+              <div className="flex items-center mb-4">
+                <svg className="w-5 h-5 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="font-semibold text-purple-900">Inventory</h3>
+              </div>
+              <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
+                  {JSON.stringify(selectedPrompt.inventory)}
                 </pre>
               </div>
             </div>
