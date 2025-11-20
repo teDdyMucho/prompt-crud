@@ -384,7 +384,7 @@ function App() {
                         </td>
                         <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 text-sm text-gray-700 max-w-md hidden xl:table-cell">
                           <div className="line-clamp-2 leading-relaxed">
-                            {JSON.stringify(prompt.inventory)}
+                            {String(prompt.inventory)}
                           </div>
                         </td>
                         <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap text-sm space-x-2">
@@ -885,7 +885,7 @@ function App() {
               </div>
               <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
                 <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
-                  {JSON.stringify(selectedPrompt.inventory)}
+                  {String(selectedPrompt.inventory)}
                 </pre>
               </div>
             </div>
