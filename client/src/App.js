@@ -421,8 +421,14 @@ function App() {
 
       {/* Enhanced Add Prompt Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn p-2 sm:p-4">
-          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden transform animate-slideUp">
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn p-2 sm:p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden transform animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6">
               <div className="flex items-center">
               <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white/20 backdrop-blur-sm rounded-xl sm:rounded-2xl flex items-center justify-center mr-3 sm:mr-4">
@@ -570,8 +576,14 @@ function App() {
 
       {/* Enhanced Edit Prompt Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 transform animate-slideUp max-h-[85vh] overflow-y-auto overscroll-contain">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-3xl mx-4 transform animate-slideUp max-h-[85vh] overflow-y-auto overscroll-contain"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center mb-6">
               <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mr-4">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -718,8 +730,14 @@ function App() {
 
       {/* Enhanced Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-md mx-4 transform animate-slideUp">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setShowDeleteModal(false)}
+        >
+          <div
+            className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-md mx-4 transform animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center mb-6">
               <div className="h-12 w-12 bg-gradient-to-br from-red-500 to-pink-600 rounded-xl flex items-center justify-center mr-4">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -764,8 +782,17 @@ function App() {
 
       {/* Enhanced View Full Prompt Modal */}
       {showViewModal && selectedPrompt && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-4xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => {
+            setShowViewModal(false);
+            setSelectedPrompt(null);
+          }}
+        >
+          <div
+            className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-4xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center">
                 <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mr-4">
