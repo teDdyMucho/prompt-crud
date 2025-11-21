@@ -22,6 +22,11 @@ function App() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showKnowledgebaseModal, setShowKnowledgebaseModal] = useState(false);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [showEditKnowledgebaseModal, setShowEditKnowledgebaseModal] = useState(false);
+  const [showEditInventoryModal, setShowEditInventoryModal] = useState(false);
+  const [showEditPromptModal, setShowEditPromptModal] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -31,7 +36,6 @@ function App() {
     knowledgebase: '',
     inventory: ''
   });
-
 
   // Fetch prompts from API
   const fetchPrompts = async (isRefresh = false) => {
@@ -229,9 +233,9 @@ function App() {
           </div>
 
           {/* Enhanced Table */}
-          <div className="p-6 sm:p-8">
+          <div className={`p-6 sm:p-8 ${filteredPrompts.length === 0 ? 'min-h-[400px]' : 'min-h-0'}`}>
             {loading ? (
-              <div className="flex flex-col justify-center items-center py-24">
+              <div className="flex flex-col justify-center items-center py-16">
                 <div className="relative">
                   <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200"></div>
                   <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-indigo-600 absolute top-0 left-0"></div>
@@ -240,7 +244,7 @@ function App() {
                 <div className="text-gray-500 text-sm mt-2">Please wait a moment</div>
               </div>
             ) : filteredPrompts.length === 0 ? (
-              <div className="flex flex-col justify-center items-center py-24">
+              <div className="flex flex-col justify-center items-center py-16">
                 <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full p-6 mb-6">
                   <svg className="w-16 h-16 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -262,7 +266,7 @@ function App() {
             ) : (
               <>
               {/* Mobile Card View */}
-              <div className="block lg:hidden space-y-4">
+              <div className="block md:hidden space-y-4 mb-6">
                 {filteredPrompts.map((prompt) => (
                   <div key={prompt.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-4">
@@ -286,12 +290,59 @@ function App() {
                         <p className="text-sm font-medium text-gray-900 mt-1">{prompt.business_name}</p>
                       </div>
                       <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Knowledgebase</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Prompt Content</span>
+                          <button
+                            onClick={() => {
+                              setSelectedPrompt(prompt);
+                              setShowViewModal(true);
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                            title="View full prompt"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 mt-1 line-clamp-2">{prompt.prompt}</p>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Knowledgebase</span>
+                          <button
+                            onClick={() => {
+                              setSelectedPrompt(prompt);
+                              setShowKnowledgebaseModal(true);
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                            title="Enlarge knowledgebase"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                            </svg>
+                          </button>
+                        </div>
                         <p className="text-sm font-medium text-gray-900 mt-1 line-clamp-2">{prompt.knowledgebase}</p>
                       </div>
                       <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Inventory</span>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{String(prompt.inventory)}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Inventory</span>
+                          <button
+                            onClick={() => {
+                              setSelectedPrompt(prompt);
+                              setShowInventoryModal(true);
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                            title="Enlarge inventory"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                            </svg>
+                          </button>
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 mt-1 line-clamp-2">{String(prompt.inventory)}</p>
                       </div>
                     </div>
                     <div className="flex gap-2 pt-3 border-t border-gray-100">
@@ -318,12 +369,12 @@ function App() {
                 ))}
               </div>
               {/* Desktop Table View */}
-              <div className="hidden lg:block overflow-x-auto">
-                <div className="min-w-[720px] overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
-                <table className="w-full">
+              <div className="hidden md:block overflow-x-auto mb-6">
+                <div className="w-full rounded-2xl border border-gray-200 shadow-sm bg-white overflow-hidden">
+                <table className="w-full table-auto">
                   <thead className="bg-gradient-to-r from-gray-50 via-slate-50 to-gray-100 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-auto">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -332,31 +383,33 @@ function App() {
                         </div>
                       </th>
                       
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <span>Location ID</span>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-24">
+                        <div className="flex items-center space-x-1">
+                          <span>Location</span>
                         </div>
                       </th>
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <span>Business Name</span>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-32">
+                        <div className="flex items-center space-x-1">
+                          <span>Business</span>
                         </div>
                       </th>
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell">
-                        <div className="flex items-center space-x-2">
-                          <span>Knowledgebase</span>
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-48">
+                        <div className="flex items-center space-x-1">
+                          <span>Content</span>
                         </div>
                       </th>
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell">
-                        <div className="flex items-center space-x-2">
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-40">
+                        <div className="flex items-center space-x-1">
+                          <span>Knowledge</span>
+                        </div>
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-32">
+                        <div className="flex items-center space-x-1">
                           <span>Inventory</span>
                         </div>
                       </th>
-                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                          </svg>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-32">
+                        <div className="flex items-center justify-center">
                           <span>Actions</span>
                         </div>
                       </th>
@@ -364,8 +417,8 @@ function App() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {filteredPrompts.map((prompt, index) => (
-                      <tr key={prompt.id} className="group odd:bg-white even:bg-slate-50/50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 transition-all duration-200 border-b border-gray-100 last:border-0">
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
+                      <tr key={prompt.id} className="group odd:bg-white even:bg-slate-50/50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 transition-all duration-200 border-b border-gray-100 last:border-0 h-16">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-12 w-12">
                               <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
@@ -373,47 +426,97 @@ function App() {
                               </div>
                             </div>
                             <div className="ml-4">
-                              <div className="text-sm sm:text-base font-bold text-gray-900">{prompt.name}</div>
+                              <div className="text-base font-bold text-gray-900">{prompt.name}</div>
                               <div className="text-xs text-gray-500 mt-0.5">ID: {String(prompt.id).slice(0, 8)}...</div>
                             </div>
                           </div>
                         </td>
                         
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-700">{prompt.location_id}</span>
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <span className="text-sm font-medium text-gray-700 truncate block w-24">{prompt.location_id}</span>
                         </td>
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">{prompt.business_name}</span>
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <span className="text-sm font-medium text-gray-900 truncate block w-32">{prompt.business_name}</span>
                         </td>
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 text-sm text-gray-700 max-w-md hidden xl:table-cell">
-                          <div className="line-clamp-2 leading-relaxed">
-                            {prompt.knowledgebase}
+                        <td className="px-2 py-4 text-sm text-gray-700 w-48 hidden xl:table-cell">
+                          <div className="flex items-start space-x-1">
+                            <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
+                              {prompt.prompt}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedPrompt(prompt);
+                                setShowViewModal(true);
+                              }}
+                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              title="View full prompt"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
                           </div>
                         </td>
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 text-sm text-gray-700 max-w-md hidden xl:table-cell">
-                          <div className="line-clamp-2 leading-relaxed">
-                            {String(prompt.inventory)}
+                        <td className="px-2 py-4 text-sm text-gray-700 w-40 hidden xl:table-cell">
+                          <div className="flex items-start space-x-1">
+                            <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
+                              {prompt.knowledgebase}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedPrompt(prompt);
+                                setShowKnowledgebaseModal(true);
+                              }}
+                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              title="Enlarge knowledgebase"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                              </svg>
+                            </button>
                           </div>
                         </td>
-                        <td className="px-4 lg:px-6 xl:px-8 py-4 lg:py-5 xl:py-6 whitespace-nowrap text-sm space-x-2">
-                          <button
-                            onClick={() => openEditModal(prompt)}
-                            className="inline-flex items-center px-3 lg:px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-sm hover:shadow-md text-sm"
-                          >
-                            <svg className="w-4 h-4 lg:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            <span className="hidden lg:inline">Edit</span>
-                          </button>
-                          <button
-                            onClick={() => openDeleteModal(prompt)}
-                            className="inline-flex items-center px-3 lg:px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-sm hover:shadow-md text-sm"
-                          >
-                            <svg className="w-4 h-4 lg:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            <span className="hidden lg:inline">Delete</span>
-                          </button>
+                        <td className="px-2 py-4 text-sm text-gray-700 w-32 hidden xl:table-cell">
+                          <div className="flex items-start space-x-1">
+                            <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
+                              {String(prompt.inventory)}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedPrompt(prompt);
+                                setShowInventoryModal(true);
+                              }}
+                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              title="Enlarge inventory"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-2 py-4 whitespace-nowrap text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <button
+                              onClick={() => openEditModal(prompt)}
+                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all"
+                              title="Edit"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(prompt)}
+                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-all"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -662,53 +765,95 @@ function App() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  Prompt Content
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Prompt Content
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPromptModal(true)}
+                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                    title="Enlarge editor"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </button>
+                </div>
                 <textarea
                   name="prompt"
                   value={formData.prompt}
                   onChange={handleInputChange}
+                  onDoubleClick={() => setShowEditPromptModal(true)}
                   rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none cursor-pointer"
                   placeholder="Enter your prompt content here..."
+                  title="Double-click to enlarge editor"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  Knowledgebase
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Knowledgebase
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditKnowledgebaseModal(true)}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                    title="Enlarge editor"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </button>
+                </div>
                 <textarea
                   name="knowledgebase"
                   value={formData.knowledgebase}
                   onChange={handleInputChange}
+                  onDoubleClick={() => setShowEditKnowledgebaseModal(true)}
                   rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none cursor-pointer"
                   placeholder="Enter your knowledgebase here..."
+                  title="Double-click to enlarge editor"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  Inventory
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Inventory
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditInventoryModal(true)}
+                    className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                    title="Enlarge editor"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </button>
+                </div>
                 <textarea
                   name="inventory"
                   value={formData.inventory}
                   onChange={handleInputChange}
+                  onDoubleClick={() => setShowEditInventoryModal(true)}
                   rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none cursor-pointer"
                   placeholder="Enter your inventory here..."
+                  title="Double-click to enlarge editor"
                   required
                 />
               </div>
@@ -920,6 +1065,239 @@ function App() {
                   className="px-8 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 transform hover:scale-105 font-semibold shadow-lg"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Knowledgebase Enlarge Modal */}
+      {showKnowledgebaseModal && selectedPrompt && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => {
+            setShowKnowledgebaseModal(false);
+            setSelectedPrompt(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-8 py-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Knowledgebase</h2>
+                  <p className="text-blue-100 mt-1">Prompt: {selectedPrompt.name}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowKnowledgebaseModal(false);
+                    setSelectedPrompt(null);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
+                  {selectedPrompt.knowledgebase}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Enlarge Modal */}
+      {showInventoryModal && selectedPrompt && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => {
+            setShowInventoryModal(false);
+            setSelectedPrompt(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-8 py-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Inventory</h2>
+                  <p className="text-purple-100 mt-1">Prompt: {selectedPrompt.name}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowInventoryModal(false);
+                    setSelectedPrompt(null);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
+                  {String(selectedPrompt.inventory)}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Knowledgebase Enlarge Modal */}
+      {showEditKnowledgebaseModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setShowEditKnowledgebaseModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-8 py-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Edit Knowledgebase</h2>
+                  <p className="text-blue-100 mt-1">Large editor for easier editing</p>
+                </div>
+                <button
+                  onClick={() => setShowEditKnowledgebaseModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-8">
+              <textarea
+                name="knowledgebase"
+                value={formData.knowledgebase}
+                onChange={handleInputChange}
+                rows={20}
+                className="w-full px-6 py-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 hover:bg-white resize-none text-base leading-relaxed"
+                placeholder="Enter your knowledgebase content here..."
+              />
+              <div className="flex justify-end space-x-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowEditKnowledgebaseModal(false)}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all duration-200 font-medium"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Inventory Enlarge Modal */}
+      {showEditInventoryModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setShowEditInventoryModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-8 py-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Edit Inventory</h2>
+                  <p className="text-purple-100 mt-1">Large editor for easier editing</p>
+                </div>
+                <button
+                  onClick={() => setShowEditInventoryModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-8">
+              <textarea
+                name="inventory"
+                value={formData.inventory}
+                onChange={handleInputChange}
+                rows={20}
+                className="w-full px-6 py-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-gray-50 hover:bg-white resize-none text-base leading-relaxed"
+                placeholder="Enter your inventory content here..."
+              />
+              <div className="flex justify-end space-x-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowEditInventoryModal(false)}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all duration-200 font-medium"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Prompt Content Enlarge Modal */}
+      {showEditPromptModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setShowEditPromptModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-8 py-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Edit Prompt Content</h2>
+                  <p className="text-green-100 mt-1">Large editor for easier editing</p>
+                </div>
+                <button
+                  onClick={() => setShowEditPromptModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-8">
+              <textarea
+                name="prompt"
+                value={formData.prompt}
+                onChange={handleInputChange}
+                rows={20}
+                className="w-full px-6 py-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-gray-50 hover:bg-white resize-none text-base leading-relaxed"
+                placeholder="Enter your prompt content here..."
+              />
+              <div className="flex justify-end space-x-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowEditPromptModal(false)}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all duration-200 font-medium"
+                >
+                  Done
                 </button>
               </div>
             </div>

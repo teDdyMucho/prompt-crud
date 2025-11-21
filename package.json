@@ -10,10 +10,12 @@
     "build": "cd client && npm run build",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.48.0"
-  },
-  "keywords": ["prompt", "management", "react", "nodejs"],
+  "keywords": [
+    "prompt",
+    "management",
+    "react",
+    "nodejs"
+  ],
   "author": "Windsurf",
   "license": "MIT",
   "devDependencies": {

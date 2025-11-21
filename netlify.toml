@@ -1,4 +1,6 @@
-  
+# Netlify configuration for deploying the React client
+# Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
@@ -6,8 +8,6 @@
 [functions.environment]
   SUPABASE_URL = "https://qkwiauivaerrrbemdlyj.supabase.co"
   SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrd2lhdWl2YWVycnJiZW1kbHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2MDg3MTMsImV4cCI6MjA3MzE4NDcxM30.iZcv-LIQQtMGBYD4it5hZRf6kFTVApng-7upJ12eXV4"
-# Netlify configuration for deploying the React client
-# Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
 
 [build]
   # Build CRA app located in client and publish its build output
@@ -16,9 +16,6 @@
 
 [build.environment]
   NODE_VERSION = "18"
-  # Expose Supabase envs at build/runtime (also available to functions)
-  SUPABASE_URL = "https://qkwiauivaerrrbemdlyj.supabase.co"
-  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrd2lhdWl2YWVycnJiZW1kbHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2MDg3MTMsImV4cCI6MjA3MzE4NDcxM30.iZcv-LIQQtMGBYD4it5hZRf6kFTVApng-7upJ12eXV4"
 
 # Redirect all routes to index.html for SPA routing
 [[redirects]]
@@ -45,6 +42,3 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Content-Security-Policy = "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'"
 
-# If you plan to add Netlify Functions later, uncomment and set the directory
-# [functions]
-#   directory = "netlify/functions"
