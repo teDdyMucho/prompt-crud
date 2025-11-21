@@ -4,12 +4,12 @@ import React, { useState, useEffect } from 'react';
 // Priority: REACT_APP_API_BASE_URL -> (production) '/.netlify/functions/prompts' -> (dev) localhost
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
-  (process.env.NODE_ENV === 'production' ? '/.netlify/functions/prompts' : 'http://localhost:5000/api');
+  (process.env.NODE_ENV === 'production' ? '/.netlify/functions/prompts' : 'http://localhost:5001/api');
 
 if (!process.env.REACT_APP_API_BASE_URL) {
   // Helpful hint in console when running without the env var set
   // In production on Netlify, we fall back to '/api' which proxies to Netlify Functions
-  // In development, we fall back to http://localhost:5000/api
+  // In development, we fall back to http://localhost:5001/api
   console.warn('REACT_APP_API_BASE_URL is not set. Using default:', API_BASE_URL);
 }
 
@@ -272,7 +272,7 @@ function App() {
                         </div>
                         <div>
                           <h3 className="text-base font-bold text-gray-900">{prompt.name}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5">ID: {prompt.id.slice(0, 8)}...</p>
+                          <p className="text-xs text-gray-500 mt-0.5">ID: {String(prompt.id).slice(0, 8)}...</p>
                         </div>
                       </div>
                     </div>
@@ -284,6 +284,14 @@ function App() {
                       <div>
                         <span className="text-xs font-semibold text-gray-500 uppercase">Business Name</span>
                         <p className="text-sm font-medium text-gray-900 mt-1">{prompt.business_name}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-500 uppercase">Knowledgebase</span>
+                        <p className="text-sm font-medium text-gray-900 mt-1 line-clamp-2">{prompt.knowledgebase}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-500 uppercase">Inventory</span>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{String(prompt.inventory)}</p>
                       </div>
                     </div>
                     <div className="flex gap-2 pt-3 border-t border-gray-100">
@@ -334,17 +342,17 @@ function App() {
                           <span>Business Name</span>
                         </div>
                       </th>
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell">
                         <div className="flex items-center space-x-2">
                           <span>Knowledgebase</span>
                         </div>
                       </th>
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell">
                         <div className="flex items-center space-x-2">
                           <span>Inventory</span>
                         </div>
                       </th>
-                      <th className="px-6 sm:px-8 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider hidden xs:table-cell sm:table-cell">
+                      <th className="px-4 lg:px-6 xl:px-8 py-3 lg:py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -366,7 +374,7 @@ function App() {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm sm:text-base font-bold text-gray-900">{prompt.name}</div>
-                              <div className="text-xs text-gray-500 mt-0.5">ID: {prompt.id.slice(0, 8)}...</div>
+                              <div className="text-xs text-gray-500 mt-0.5">ID: {String(prompt.id).slice(0, 8)}...</div>
                             </div>
                           </div>
                         </td>
