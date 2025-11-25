@@ -179,6 +179,30 @@ function App() {
     fetchPrompts();
   }, []);
 
+  // Delete uploaded file
+  const deleteUploadedFile = async (fileId, fileName) => {
+    try {
+      log('Files:delete:start', { fileId, fileName });
+      
+      const response = await fetch(`${API_BASE_URL}/kb-file-sources/${fileId}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        log('Files:delete:success', { fileId, fileName });
+        // Refresh the files list
+        if (selectedPrompt) {
+          fetchUploadedFiles(selectedPrompt.id);
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Delete failed: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      logError('Files:delete', error);
+    }
+  };
+
   // Fetch uploaded files when File Upload tab is selected
   useEffect(() => {
     if (kbTab === 'File Upload' && selectedPrompt) {
@@ -1710,13 +1734,33 @@ function App() {
                               }`}>
                                 {file.status}
                               </span>
+                              {/* Only show download button on localhost */}
+                              {API_BASE_URL.includes('localhost') && (
+                                <button 
+                                  onClick={() => window.open(`${API_BASE_URL.replace('/api', '')}${file.file_url}`, '_blank')}
+                                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                                  title="Download file"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {!API_BASE_URL.includes('localhost') && (
+                                <span className="text-xs text-gray-400 px-2">View only</span>
+                              )}
+                              {/* Delete button */}
                               <button 
-                                onClick={() => window.open(`${API_BASE_URL.replace('/api', '')}${file.file_url}`, '_blank')}
-                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
-                                title="Download file"
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete "${file.file_name}"?`)) {
+                                    deleteUploadedFile(file.id, file.file_name);
+                                  }
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"
+                                title="Delete file"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                               </button>
                             </div>

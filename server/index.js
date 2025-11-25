@@ -226,6 +226,54 @@ app.post('/api/kb-table-sources', uploadCSV.single('file'), async (req, res) => 
   }
 });
 
+// DELETE uploaded file from kb_file_sources
+app.delete('/api/kb-file-sources/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // First get the file record to get the file path
+    const { data: fileRecord, error: fetchError } = await supabase
+      .from('kb_file_sources')
+      .select('file_path')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      throw fetchError;
+    }
+
+    // Delete the record from database
+    const { error: deleteError } = await supabase
+      .from('kb_file_sources')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    // Try to delete the physical file (don't fail if file doesn't exist)
+    if (fileRecord && fileRecord.file_path) {
+      try {
+        fs.unlinkSync(fileRecord.file_path);
+        console.log('File deleted:', fileRecord.file_path);
+      } catch (unlinkError) {
+        console.warn('Could not delete physical file:', unlinkError.message);
+        // Don't fail the request if file deletion fails
+      }
+    }
+
+    console.log('File record deleted successfully:', id);
+    return res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting file:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
 // GET uploaded files from kb_file_sources
 app.get('/api/kb-file-sources', async (req, res) => {
   try {

@@ -174,6 +174,26 @@ export async function handler(event) {
       return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data || []) };
     }
 
+    // DELETE /api/kb-file-sources/:id -> delete uploaded file
+    const deleteFileMatch = event.httpMethod === 'DELETE' && /^\/kb-file-sources\/([^\/]+)$/.test(subpath);
+    if (deleteFileMatch) {
+      const id = subpath.split('/')[2];
+
+      const { error } = await supabase
+        .from('kb_file_sources')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'File not found' }) };
+        }
+        throw error;
+      }
+
+      return { statusCode: 204, headers: jsonHeaders, body: '' };
+    }
+
     // Not found
     return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', method: event.httpMethod, path: subpath }) };
   } catch (err) {
