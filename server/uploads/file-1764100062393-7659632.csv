@@ -1,0 +1,4 @@
+id,created_at,email,username,avatar_url,last_sign_in,first_name,last_name,role
+631cda61-2fae-46a7-8028-48069dd6bf0d,2025-07-03 20:44:45.658051+00,example@test.com,ExampleTest,,2025-07-03 20:46:05.093+00,Exa,Test,user
+a239ec7f-d658-4516-93cf-8e03d1e15370,2025-07-02 12:57:35.405+00,jmm@test.com,jmm,,2025-07-14 13:30:28.902+00,Jose Mario,Martinez,user
+f2c0b18f-1e5d-499b-b04c-1c1e5d00b70c,2025-07-03 17:33:05.535244+00,pog@test.com,pog,,2025-07-03 19:36:51.661+00,Angelo,Angela,user

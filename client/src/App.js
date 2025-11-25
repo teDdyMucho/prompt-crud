@@ -13,6 +13,12 @@ if (!process.env.REACT_APP_API_BASE_URL) {
   console.warn('REACT_APP_API_BASE_URL is not set. Using default:', API_BASE_URL);
 }
 
+// Simple debug helpers
+const log = (...args) => console.log('[APP]', ...args);
+const logError = (label, err, extra = {}) => {
+  console.error(`[APP][Error] ${label}:`, err, extra);
+};
+
 function App() {
   const [prompts, setPrompts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +56,11 @@ function App() {
   const [fileDragging, setFileDragging] = useState(false);
   const [fileUploadFiles, setFileUploadFiles] = useState([]);
   const fileInputRef = useRef(null);
+  const [tableName, setTableName] = useState(''); 
+  const [uploadingTable, setUploadingTable] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
 
   const updateInlineStates = () => {
     try {
@@ -59,6 +70,40 @@ function App() {
     } catch {}
   };
 
+  // Fetch uploaded files
+  const fetchUploadedFiles = async (promptId = null) => {
+    try {
+      log('Files:fetch:start', { promptId });
+      const url = promptId 
+        ? `${API_BASE_URL}/kb-file-sources?prompt_id=${promptId}`
+        : `${API_BASE_URL}/kb-file-sources`;
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const files = await response.json();
+        setUploadedFiles(files);
+        log('Files:fetch:success', { count: files.length, files });
+      } else {
+        throw new Error(`Failed to fetch files: ${response.status}`);
+      }
+    } catch (error) {
+      logError('Files:fetch', error);
+      setUploadedFiles([]);
+    }
+  };
+
+  // Global error hooks (runtime JS errors & unhandled promise rejections)
+  useEffect(() => {
+    const onErr = (e) => logError('window.error', e.error || e.message, { filename: e.filename, lineno: e.lineno, colno: e.colno });
+    const onRej = (e) => logError('unhandledrejection', e.reason);
+    window.addEventListener('error', onErr);
+    window.addEventListener('unhandledrejection', onRej);
+    return () => {
+      window.removeEventListener('error', onErr);
+      window.removeEventListener('unhandledrejection', onRej);
+    };
+  }, []);
+
   // Drag and drop helpers
   const handleDrop = (ev, type) => {
     ev.preventDefault();
@@ -67,12 +112,14 @@ function App() {
       const csvs = items.filter(f => f.name.toLowerCase().endsWith('.csv'));
       setTableFiles(csvs);
       setTableDragging(false);
+      log('Table drop received', csvs.map(f=>({ name: f.name, size: f.size })));
     } else if (type === 'files') {
       const allowed = ['pdf','doc','docx'];
       const picked = items.filter(f => allowed.includes(f.name.split('.').pop()?.toLowerCase()))
         .slice(0, 10);
       setFileUploadFiles(picked);
       setFileDragging(false);
+      log('Files drop received', picked.map(f=>({ name: f.name, size: f.size })));
     }
   };
 
@@ -96,6 +143,7 @@ function App() {
   // Fetch prompts from API
   const fetchPrompts = async (isRefresh = false) => {
     try {
+      log('fetchPrompts:start', { isRefresh });
       if (isRefresh) {
         setRefreshing(true);
       } else {
@@ -116,9 +164,11 @@ function App() {
         const msg = typeof data === 'object' && data && data.error ? data.error : text;
         throw new Error(`HTTP ${response.status}: ${msg}`);
       }
-      setPrompts(Array.isArray(data) ? data : []);
+      const arr = Array.isArray(data) ? data : [];
+      setPrompts(arr);
+      log('fetchPrompts:success', { count: arr.length });
     } catch (error) {
-      console.error('Error fetching prompts:', error);
+      logError('fetchPrompts', error);
       setPrompts([]);
     } finally {
       setLoading(false);
@@ -129,6 +179,13 @@ function App() {
   useEffect(() => {
     fetchPrompts();
   }, []);
+
+  // Fetch uploaded files when File Upload tab is selected
+  useEffect(() => {
+    if (kbTab === 'File Upload' && selectedPrompt) {
+      fetchUploadedFiles(selectedPrompt.id);
+    }
+  }, [kbTab, selectedPrompt]);
 
   const filteredPrompts = (Array.isArray(prompts) ? prompts : []).filter(p => {
     const q = searchQuery.trim().toLowerCase();
@@ -1166,7 +1223,7 @@ function App() {
                   {['All','Web Crawler','FAQs','Tables','Rich Text','File Upload'].map(tab => (
                     <button
                       key={tab}
-                      onClick={() => setKbTab(tab)}
+                      onClick={() => { setKbTab(tab); log('kbTab:change', tab); }}
                       className={`pb-2 transition-colors ${kbTab === tab ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                     >
                       {tab}
@@ -1249,8 +1306,8 @@ function App() {
                       <div className="text-xs text-gray-400 text-right mt-1">{faqA.length}/1000 characters</div>
                     </div>
                     <div className="flex justify-end gap-3 pt-4">
-                      <button className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
-                      <button className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Save</button>
+                      <button className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" onClick={()=>log('FAQs:cancel')}>Cancel</button>
+                      <button className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700" onClick={()=>log('FAQs:save',{ qLen: faqQ.length, aLen: faqA.length })}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -1287,15 +1344,86 @@ function App() {
                         Selected: {tableFiles.map(f=>f.name).join(', ')}
                       </div>
                     )}
-                    <input ref={tableInputRef} type="file" accept=".csv" className="hidden" onChange={(e)=> setTableFiles(Array.from(e.target.files||[]))} />
+                    <input ref={tableInputRef} type="file" accept=".csv" className="hidden" onChange={(e)=> {
+                      const files = Array.from(e.target.files||[]);
+                      setTableFiles(files);
+                      log('Tables:fileInput:change', { fileCount: files.length, files: files.map(f => f.name) });
+                    }} />
                   </div>
                   <div className="mt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Enter a name for your table source" />
+                    <input 
+                      value={tableName}
+                      onChange={(e) => {
+                        const newName = e.target.value;
+                        setTableName(newName);
+                        log('Tables:nameInput:change', { name: newName });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                      placeholder="Enter a name for your table source" 
+                    />
                   </div>
                   <div className="flex justify-end gap-3 mt-5">
-                    <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Next</button>
+                    <button 
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setTableFiles([]);
+                        setTableName('');
+                        log('Tables:cancel');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={(() => {
+                        const isDisabled = tableFiles.length === 0 || !tableName.trim() || uploadingTable;
+                        log('Tables:nextButton:disabled', { 
+                          fileCount: tableFiles.length, 
+                          nameLength: tableName.trim().length, 
+                          uploading: uploadingTable, 
+                          isDisabled 
+                        });
+                        return isDisabled;
+                      })()}
+                      onClick={async () => {
+                        if (tableFiles.length === 0 || !tableName.trim()) return;
+                        
+                        setUploadingTable(true);
+                        log('Tables:upload:start', { name: tableName, fileCount: tableFiles.length, promptId: selectedPrompt?.id });
+                        
+                        try {
+                          const file = tableFiles[0]; // Take first CSV file
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          formData.append('name', tableName);
+                          formData.append('prompt_id', selectedPrompt?.id || '');
+                          
+                          const response = await fetch(`${API_BASE_URL}/kb-table-sources`, {
+                            method: 'POST',
+                            body: formData,
+                          });
+                          
+                          if (response.ok) {
+                            const result = await response.json();
+                            log('Tables:upload:success', result);
+                            // Reset form
+                            setTableFiles([]);
+                            setTableName('');
+                            // Could show success message or move to next step
+                          } else {
+                            const errorText = await response.text();
+                            throw new Error(`Upload failed: ${response.status} ${errorText}`);
+                          }
+                        } catch (error) {
+                          logError('Tables:upload', error);
+                        } finally {
+                          setUploadingTable(false);
+                        }
+                      }}
+                    >
+                      {uploadingTable ? 'Uploading...' : 'Next'}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1476,12 +1604,128 @@ function App() {
                         Selected: {fileUploadFiles.map(f=>f.name).join(', ')}
                       </div>
                     )}
-                    <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" multiple className="hidden" onChange={(e)=> setFileUploadFiles(Array.from(e.target.files||[]))} />
+                    <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" multiple className="hidden" onChange={(e)=> {
+                      const files = Array.from(e.target.files||[]);
+                      setFileUploadFiles(files);
+                      log('Files:fileInput:change', { fileCount: files.length, files: files.map(f => f.name) });
+                    }} />
                   </div>
                   <div className="flex justify-end gap-3 mt-5">
-                    <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Upload Files</button>
+                    <button 
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setFileUploadFiles([]);
+                        log('Files:cancel');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={(() => {
+                        const isDisabled = fileUploadFiles.length === 0 || uploadingFiles;
+                        log('Files:uploadButton:disabled', { 
+                          fileCount: fileUploadFiles.length, 
+                          uploading: uploadingFiles, 
+                          isDisabled 
+                        });
+                        return isDisabled;
+                      })()}
+                      onClick={async () => {
+                        if (fileUploadFiles.length === 0) return;
+                        
+                        setUploadingFiles(true);
+                        log('Files:upload:start', { fileCount: fileUploadFiles.length, promptId: selectedPrompt?.id });
+                        
+                        try {
+                          const results = [];
+                          
+                          // Upload each file
+                          for (const file of fileUploadFiles) {
+                            const formData = new FormData();
+                            formData.append('file', file);
+                            formData.append('prompt_id', selectedPrompt?.id || '');
+                            
+                            const response = await fetch(`${API_BASE_URL}/kb-file-sources`, {
+                              method: 'POST',
+                              body: formData,
+                            });
+                            
+                            if (response.ok) {
+                              const result = await response.json();
+                              results.push(result);
+                              log('Files:upload:fileSuccess', { file: file.name, result });
+                            } else {
+                              const errorText = await response.text();
+                              throw new Error(`Upload failed for ${file.name}: ${response.status} ${errorText}`);
+                            }
+                          }
+                          
+                          log('Files:upload:allSuccess', { totalFiles: results.length, results });
+                          // Reset form
+                          setFileUploadFiles([]);
+                          // Refresh uploaded files list
+                          if (selectedPrompt) {
+                            fetchUploadedFiles(selectedPrompt.id);
+                          }
+                        } catch (error) {
+                          logError('Files:upload', error);
+                        } finally {
+                          setUploadingFiles(false);
+                        }
+                      }}
+                    >
+                      {uploadingFiles ? 'Uploading...' : 'Upload Files'}
+                    </button>
                   </div>
+                  
+                  {/* Uploaded Files List */}
+                  {uploadedFiles.length > 0 && (
+                    <div className="mt-6 border-t pt-6">
+                      <h4 className="text-sm font-medium text-gray-900 mb-3">Uploaded Files ({uploadedFiles.length})</h4>
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {uploadedFiles.map((file) => (
+                          <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex-shrink-0">
+                                {file.mime_type?.includes('pdf') ? (
+                                  <svg className="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-8 h-8 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{file.file_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {(file.file_size / 1024 / 1024).toFixed(2)} MB • {new Date(file.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                file.status === 'uploaded' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {file.status}
+                              </span>
+                              <button 
+                                onClick={() => window.open(`${API_BASE_URL.replace('/api', '')}${file.file_url}`, '_blank')}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                                title="Download file"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

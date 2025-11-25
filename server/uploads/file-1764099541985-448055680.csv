@@ -1,0 +1,4169 @@
+function_name,definition
+allocate_brand_po_finished_first,"CREATE OR REPLACE FUNCTION public.allocate_brand_po_finished_first(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po               purchase_orders%ROWTYPE;
+    v_line             purchase_order_lines%ROWTYPE;
+    v_fg               finished_goods%ROWTYPE;
+    v_product          products%ROWTYPE;
+
+    v_ordered          numeric;
+    v_available        numeric;
+    v_alloc            numeric;
+    v_short            numeric;
+
+    v_total_ordered    numeric := 0;
+    v_total_allocated  numeric := 0;
+    v_total_shortfall  numeric := 0;
+
+    v_po_status        text := 'open';
+    v_line_status      text;
+
+    v_lines jsonb := '[]'::jsonb;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1. LOCK PO HEADER
+    ------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 2. PREVENT DOUBLE ALLOCATION
+    ------------------------------------------------------------------
+    IF v_po.status IN ('allocated','backordered','partial') THEN
+        RETURN jsonb_build_object('status','skipped','reason','already processed');
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 3. LOOP ALL PO LINES
+    ------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+        v_ordered := COALESCE(v_line.quantity, 0);
+        v_total_ordered := v_total_ordered + v_ordered;
+
+        ------------------------------------------------------------------
+        -- 3.1 FIND FINISHED GOODS by product_name
+        ------------------------------------------------------------------
+        SELECT *
+        INTO v_fg
+        FROM public.finished_goods
+        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(v_line.product_name))
+        LIMIT 1
+        FOR UPDATE;
+
+        v_available := COALESCE(v_fg.available_qty, 0);
+
+        ------------------------------------------------------------------
+        -- 3.2 COMPUTE ALLOCATION
+        ------------------------------------------------------------------
+        v_alloc := LEAST(v_available, v_ordered);
+        v_short := v_ordered - v_alloc;
+
+        IF v_short = 0 THEN
+            v_line_status := 'allocated';
+        ELSIF v_alloc = 0 THEN
+            v_line_status := 'backordered';
+        ELSE
+            v_line_status := 'partial';
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 3.3 UPDATE FINISHED GOODS
+        ------------------------------------------------------------------
+        IF v_alloc > 0 THEN
+            UPDATE public.finished_goods
+            SET
+                available_qty = available_qty - v_alloc,
+                reserved_qty  = COALESCE(reserved_qty,0) + v_alloc,
+                updated_at    = NOW()
+            WHERE id = v_fg.id;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 3.4 UPDATE PO LINE
+        ------------------------------------------------------------------
+        UPDATE public.purchase_order_lines
+        SET
+            allocated_qty = v_alloc,
+            shortfall_qty = v_short,
+            backorder_qty = v_short,
+            status        = v_line_status,
+            update_at     = NOW()
+        WHERE id = v_line.id;
+
+        ------------------------------------------------------------------
+        -- 3.5 ACCUMULATE TOTALS
+        ------------------------------------------------------------------
+        v_total_allocated := v_total_allocated + v_alloc;
+        v_total_shortfall := v_total_shortfall + v_short;
+
+        v_lines := v_lines || jsonb_build_array(
+            jsonb_build_object(
+                'line_id', v_line.id,
+                'product', v_line.product_name,
+                'ordered', v_ordered,
+                'allocated', v_alloc,
+                'shortfall', v_short,
+                'status', v_line_status
+            )
+        );
+            ------------------------------------------------------------------
+            -- 3.6 CREATE PRODUCTION BATCH FOR SHORTFALL (NO CUSTOMER/FORMULA)
+            ------------------------------------------------------------------
+            IF v_short > 0 THEN
+
+                INSERT INTO public.production_batches (
+                    product_sku,
+                    qty,
+                    status,
+                    created_at,
+                    source_po_id,
+                    source_po_line_id
+                )
+                VALUES (
+                    v_line.product_name,
+                    v_short,
+                    'Scheduled',
+                    NOW(),
+                    p_po_id,
+                    v_line.id
+                );
+
+            END IF;
+        ------------------------------------------------------------------
+        -- 3.7 SHIPMENT GENERATION (ADDED – NOTHING REMOVED)
+        ------------------------------------------------------------------
+        IF v_alloc > 0 THEN
+            INSERT INTO public.shipments (
+                id,
+                po_id,
+                po_line_id,
+                shipped_qty,
+                shipment_date,
+                eta,
+                status,
+                notes
+            )
+            VALUES (
+                gen_random_uuid(),
+                p_po_id,
+                v_line.id,
+                v_alloc,
+                NOW(),
+                (NOW() + INTERVAL '5 days')::date,
+                CASE
+                    WHEN v_short = 0 THEN 'Shipped'
+                    ELSE 'Partially Shipped'
+                END,
+                'Auto-created shipment from PO allocation'
+            );
+
+            UPDATE public.purchase_order_lines
+            SET shipped_qty = v_alloc
+            WHERE id = v_line.id;
+        END IF;
+
+    END LOOP;
+
+    ------------------------------------------------------------------
+    -- 4. FINAL PO STATUS
+    ------------------------------------------------------------------
+    IF v_total_allocated = v_total_ordered THEN
+        v_po_status := 'allocated';
+    ELSIF v_total_allocated = 0 THEN
+        v_po_status := 'backordered';
+    ELSE
+        v_po_status := 'partial';
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 5. UPDATE PO HEADER
+    ------------------------------------------------------------------
+    UPDATE public.purchase_orders
+    SET
+        allocated_qty = v_total_allocated,
+        backorder_qty = v_total_shortfall,
+        status        = v_po_status,
+        update_at     = NOW()
+    WHERE id = p_po_id;
+
+    ------------------------------------------------------------------
+    -- 6. RETURN SUMMARY
+    ------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_po_status,
+        'total_ordered',  v_total_ordered,
+        'total_allocated',v_total_allocated,
+        'total_shortfall',v_total_shortfall,
+        'lines', v_lines
+    );
+END;
+$function$
+"
+allocate_copack_po_client_materials,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_client_materials(po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  RETURN public.fn_allocate_copack_dual_pr(po_id);
+END;
+$function$
+"
+allocate_copack_po_materials,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_materials(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po          purchase_orders%ROWTYPE;
+    v_line        purchase_order_lines%ROWTYPE;
+    v_formula     formulas%ROWTYPE;
+    v_item        formula_items%ROWTYPE;
+    v_mat         inventory_materials%ROWTYPE;
+
+    v_alloc       numeric;
+    v_short       numeric;
+
+    v_total_ordered   numeric := 0;
+    v_total_allocated numeric := 0;
+    v_total_short     numeric := 0;
+
+    v_po_status   text := 'allocated';
+    v_line_status text;
+
+    v_lines  jsonb := '[]'::jsonb;
+    v_errors jsonb := '[]'::jsonb;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1) LOCK PO HEADER
+    ------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'status',  'error',
+            'message', 'PO not found',
+            'po_id',   p_po_id
+        );
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 2) LOOP ALL PO LINES
+    ------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+        v_alloc := 0;
+        v_short := 0;
+
+        v_total_ordered := v_total_ordered + COALESCE(v_line.quantity,0);
+
+        ------------------------------------------------------------------
+        -- 2.1 HANAPIN ANG FORMULA NG PRODUCT NA ITO
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p
+          ON p.id = f.product_id
+        WHERE LOWER(TRIM(p.product_name)) = LOWER(TRIM(v_line.product_name))
+        ORDER BY f.created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            -- Walang BOM → hindi ma-allocate, full shortfall
+            v_alloc := 0;
+            v_short := COALESCE(v_line.quantity,0);
+            v_line_status := 'backordered';
+            v_po_status := 'backordered';
+
+            v_errors := v_errors || jsonb_build_array(
+                format('No formula/BOM found for product ""%s"".', v_line.product_name)
+            );
+
+        ELSE
+            ------------------------------------------------------------------
+            -- 2.2 CHECK KUNG SAPAT ANG CLIENT MATERIALS PARA SA LAHAT NG ITEMS
+            ------------------------------------------------------------------
+            v_alloc := COALESCE(v_line.quantity,0); -- assume full qty muna
+
+            FOR v_item IN
+                SELECT *
+                FROM public.formula_items
+                WHERE formula_id = v_formula.id
+            LOOP
+                SELECT *
+                INTO v_mat
+                FROM public.inventory_materials
+                WHERE id = v_item.material_id
+                FOR UPDATE;
+
+                IF NOT FOUND THEN
+                    v_errors := v_errors || jsonb_build_array(
+                        format('Material id %s not found for formula of ""%s"".',
+                               v_item.material_id, v_line.product_name)
+                    );
+                    v_alloc := 0;
+                    EXIT;
+                END IF;
+
+                IF COALESCE(v_mat.total_available,0) <
+                   (COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0)) THEN
+                    v_errors := v_errors || jsonb_build_array(
+                        format('Insufficient client material ""%s"" for product ""%s"".',
+                               v_mat.product_name, v_line.product_name)
+                    );
+                    v_alloc := 0;
+                    EXIT;
+                END IF;
+            END LOOP;
+
+            ------------------------------------------------------------------
+            -- 2.3 KUNG OK ANG STOCK → DEDUCT & RESERVE
+            ------------------------------------------------------------------
+            IF v_alloc > 0 THEN
+                FOR v_item IN
+                    SELECT *
+                    FROM public.formula_items
+                    WHERE formula_id = v_formula.id
+                LOOP
+                    SELECT *
+                    INTO v_mat
+                    FROM public.inventory_materials
+                    WHERE id = v_item.material_id
+                    FOR UPDATE;
+
+                    UPDATE public.inventory_materials
+                    SET
+                        total_available = COALESCE(total_available,0)
+                                          - (COALESCE(v_item.qty_per_unit,0) * v_line.quantity),
+                        reserved_qty    = COALESCE(reserved_qty,0)
+                                          + (COALESCE(v_item.qty_per_unit,0) * v_line.quantity)
+                    WHERE id = v_mat.id;
+
+                    INSERT INTO public.inventory_reservations (
+                        id,
+                        po_id,
+                        line_id,
+                        product_name,
+                        bucket,
+                        sku,
+                        qty,
+                        created_at,
+                        batch_id,
+                        material_id,
+                        status,
+                        is_consumed
+                    )
+                    VALUES (
+                        gen_random_uuid(),
+                        p_po_id,
+                        v_line.id,
+                        v_mat.product_name,
+                        'copack_client',
+                        v_mat.sku,
+                        (COALESCE(v_item.qty_per_unit,0) * v_line.quantity),
+                        now(),
+                        NULL,
+                        v_mat.id,
+                        'active',
+                        false
+                    );
+                END LOOP;
+
+                v_short := 0;
+                v_line_status := 'allocated';
+
+            ELSE
+                -- Hindi sapat ang materials para sa BOM
+                v_short := COALESCE(v_line.quantity,0);
+                v_line_status := 'backordered';
+                v_po_status := 'backordered';
+            END IF;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 2.4 UPDATE PO LINE
+        ------------------------------------------------------------------
+        UPDATE public.purchase_order_lines
+        SET
+            allocated_qty = v_alloc,
+            shortfall_qty = v_short,
+            backorder_qty = v_short,
+            status        = v_line_status,
+            update_at     = now()
+        WHERE id = v_line.id;
+
+        v_total_allocated := v_total_allocated + v_alloc;
+        v_total_short     := v_total_short     + v_short;
+
+        v_lines := v_lines || jsonb_build_array(
+            jsonb_build_object(
+                'line_id',       v_line.id,
+                'product_name',  v_line.product_name,
+                'ordered_qty',   v_line.quantity,
+                'allocated_qty', v_alloc,
+                'shortfall_qty', v_short,
+                'status',        v_line_status
+            )
+        );
+    END LOOP;
+
+    ------------------------------------------------------------------
+    -- 3) UPDATE PO HEADER
+    ------------------------------------------------------------------
+    UPDATE public.purchase_orders
+    SET
+        allocated_qty = v_total_allocated,
+        backorder_qty = v_total_short,
+        status        = v_po_status,
+        update_at     = now()
+    WHERE id = p_po_id;
+
+    ------------------------------------------------------------------
+    -- 4) RETURN SUMMARY
+    ------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id',           p_po_id,
+        'status',          v_po_status,
+        'total_ordered',   v_total_ordered,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_short,
+        'lines',           v_lines,
+        'errors',          v_errors
+    );
+END;
+$function$
+"
+allocate_copack_po_operation_materials,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_operation_materials(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po       public.purchase_orders%ROWTYPE;
+    v_line     public.purchase_order_lines%ROWTYPE;
+    v_formula  public.formulas%ROWTYPE;
+    v_item     public.formula_items%ROWTYPE;
+    v_mat      public.inventory_materials%ROWTYPE;
+
+    v_required numeric;
+    v_available numeric;
+    v_short numeric;
+
+    v_shortages jsonb := '[]'::jsonb;
+    v_alloc jsonb := '[]'::jsonb;
+BEGIN
+    -------------------------------------------------------------------
+    -- 1. Load PO
+    -------------------------------------------------------------------
+    SELECT * INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    IF v_po.is_copack IS NOT TRUE THEN
+        RETURN jsonb_build_object('status','skipped','reason','Not a copack PO');
+    END IF;
+
+    IF v_po.operation_supplies_materials IS NOT TRUE THEN
+        RETURN jsonb_build_object('status','skipped','reason','PO is not OPS-supplied');
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 2. Loop PO lines
+    -------------------------------------------------------------------
+    FOR v_line IN
+        SELECT * FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+    LOOP
+        ----------------------------------------------------------------
+        -- 2.1 Find formula for product name
+        ----------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p ON p.id = f.product_id
+        WHERE TRIM(LOWER(p.product_name)) = TRIM(LOWER(v_line.product_name))
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            CONTINUE;
+        END IF;
+
+        ----------------------------------------------------------------
+        -- 2.2 Loop formula BOM
+        ----------------------------------------------------------------
+        FOR v_item IN
+            SELECT * FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            SELECT * INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+              AND is_client_supplied = FALSE;   -- OPS MATERIALS ONLY
+
+            IF NOT FOUND THEN
+                CONTINUE;
+            END IF;
+
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+            v_available := (v_mat.total_available - v_mat.reserved_qty);
+
+            IF v_available < v_required THEN
+                v_short := v_required - v_available;
+
+                v_shortages := v_shortages || jsonb_build_object(
+                    'material_id', v_mat.id,
+                    'material', v_mat.product_name,
+                    'required', v_required,
+                    'available', v_available,
+                    'short', v_short
+                );
+            ELSE
+                v_alloc := v_alloc || jsonb_build_object(
+                    'material_id', v_mat.id,
+                    'material', v_mat.product_name,
+                    'required', v_required
+                );
+            END IF;
+        END LOOP;
+    END LOOP;
+
+    -------------------------------------------------------------------
+    -- 3. If shortages → Backorder the PO
+    -------------------------------------------------------------------
+    IF jsonb_array_length(v_shortages) > 0 THEN
+
+        UPDATE purchase_orders
+        SET status = 'Backordered',
+            backorder_qty = 0
+        WHERE id = p_po_id;
+
+        RETURN jsonb_build_object(
+            'status','backordered',
+            'po_id', p_po_id,
+            'shortages', v_shortages
+        );
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 4. If no shortages → Reserve materials
+    -------------------------------------------------------------------
+    FOR v_line IN
+        SELECT * FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+    LOOP
+        SELECT f.* INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p ON p.id = f.product_id
+        WHERE TRIM(LOWER(p.product_name)) = TRIM(LOWER(v_line.product_name))
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1;
+
+        FOR v_item IN
+            SELECT * FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            SELECT * INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+              AND is_client_supplied = FALSE;
+
+            IF NOT FOUND THEN
+                CONTINUE;
+            END IF;
+
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+
+            UPDATE inventory_materials
+            SET reserved_qty = reserved_qty + v_required
+            WHERE id = v_mat.id;
+        END LOOP;
+    END LOOP;
+
+    -------------------------------------------------------------------
+    -- 5. Update PO status → Allocated
+    -------------------------------------------------------------------
+    UPDATE purchase_orders
+    SET status = 'Allocated',
+        backorder_qty = 0
+    WHERE id = p_po_id;
+
+    RETURN jsonb_build_object(
+        'status','allocated',
+        'po_id', p_po_id,
+        'allocated_items', v_alloc
+    );
+END;
+$function$
+"
+allocate_copack_po_operations,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_operations(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po            public.purchase_orders%ROWTYPE;
+    v_line          public.purchase_order_lines%ROWTYPE;
+    v_formula       public.formulas%ROWTYPE;
+    v_item          public.formula_items%ROWTYPE;
+    v_mat           public.inventory_materials%ROWTYPE;
+
+    v_required      numeric;
+    v_available     numeric;
+    v_alloc         numeric;
+    v_short         numeric;
+
+    v_total_required   numeric := 0;
+    v_total_allocated  numeric := 0;
+    v_total_shortfall  numeric := 0;
+
+    v_status       text := '';
+
+    v_lines        jsonb := '[]'::jsonb;
+    v_errors       jsonb := '[]'::jsonb;
+    v_client_prs   jsonb := '[]'::jsonb;
+    v_ops_prs      jsonb := '[]'::jsonb;
+
+    v_existing_client_pr_id uuid;
+    v_existing_ops_pr_id    uuid;
+BEGIN
+    ----------------------------------------------------------------------
+    -- 1. LOAD PO (LOCK)
+    ----------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    IF v_po.is_copack IS NOT TRUE THEN
+        RETURN jsonb_build_object('status','skipped','reason','not a copack PO');
+    END IF;
+
+    v_status := 'processing';
+
+    ----------------------------------------------------------------------
+    -- 2. LOOP PO LINES
+    ----------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+
+        ------------------------------------------------------------------
+        -- Reset line totals for this PO line
+        ------------------------------------------------------------------
+        v_line.allocated_qty := 0;
+        v_line.shortfall_qty := 0;
+
+        ------------------------------------------------------------------
+        -- 2.1 FIND FORMULA
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p ON p.id = f.product_id
+        WHERE TRIM(LOWER(p.product_name)) = TRIM(LOWER(v_line.product_name))
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            v_errors := v_errors || jsonb_build_array(
+                jsonb_build_object(
+                    'product', v_line.product_name,
+                    'error', 'No BOM found'
+                )
+            );
+            CONTINUE;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 2.2 LOOP BOM ITEMS
+        ------------------------------------------------------------------
+        FOR v_item IN
+            SELECT *
+            FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+            v_total_required := v_total_required + v_required;
+
+            ------------------------------------------------------------------
+            -- LOAD MATERIAL
+            ------------------------------------------------------------------
+            SELECT *
+            INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                v_short := v_required;
+                v_total_shortfall := v_total_shortfall + v_short;
+                v_line.shortfall_qty := v_line.shortfall_qty + v_short;
+
+                v_errors := v_errors || jsonb_build_array(
+                    jsonb_build_object(
+                        'material_id', v_item.material_id,
+                        'error','Material not in inventory'
+                    )
+                );
+
+                CONTINUE;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- COMPUTE ALLOCATION
+            ------------------------------------------------------------------
+            v_available := GREATEST(
+                COALESCE(v_mat.total_available,0) - COALESCE(v_mat.reserved_qty,0),
+                0
+            );
+
+            v_alloc := LEAST(v_available, v_required);
+            v_short := v_required - v_alloc;
+
+            v_total_allocated := v_total_allocated + v_alloc;
+            v_total_shortfall := v_total_shortfall + v_short;
+
+            ------------------------------------------------------------------
+            -- ACCUMULATE into PO LINE, not overwrite
+            ------------------------------------------------------------------
+            v_line.allocated_qty := v_line.allocated_qty + v_alloc;
+            v_line.shortfall_qty := v_line.shortfall_qty + v_short;
+
+            ------------------------------------------------------------------
+            -- 2.4 OPS SHORTFALL PR
+            ------------------------------------------------------------------
+            IF v_short > 0 AND v_po.operation_supplies_materials = TRUE THEN
+                SELECT id INTO v_existing_ops_pr_id
+                FROM public.purchase_requisitions
+                WHERE po_id = p_po_id
+                  AND item_type = 'raw_material'
+                  AND item_name = v_mat.product_name
+                  AND source = 'copack_po_ops'
+                  AND is_client_material = FALSE
+                  AND status IN ('Open','Pending','Requested')
+                LIMIT 1;
+
+                IF v_existing_ops_pr_id IS NULL THEN
+                    INSERT INTO public.purchase_requisitions (
+                        item_type, item_name, required_qty, needed_by,
+                        source, status, notes, po_id, is_client_material
+                    )
+                    VALUES (
+                        'raw_material',
+                        v_mat.product_name,
+                        v_short,
+                        v_po.requested_ship_date,
+                        'copack_po_ops',
+                        'Open',
+                        'Ops needs more materials',
+                        p_po_id,
+                        FALSE
+                    )
+                    RETURNING id INTO v_existing_ops_pr_id;
+
+                    v_ops_prs := v_ops_prs || jsonb_build_array(
+                        jsonb_build_object(
+                            'pr_id', v_existing_ops_pr_id,
+                            'material', v_mat.product_name,
+                            'short', v_short
+                        )
+                    );
+                END IF;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- 2.6 SUMMARY
+            ------------------------------------------------------------------
+            v_lines := v_lines || jsonb_build_array(
+                jsonb_build_object(
+                    'material', v_mat.product_name,
+                    'required', v_required,
+                    'allocated', v_alloc,
+                    'short', v_short
+                )
+            );
+
+        END LOOP; -- items
+
+        ------------------------------------------------------------------
+        -- 2.7 UPDATE PO LINE IN DB (FINAL)
+        ------------------------------------------------------------------
+        UPDATE public.purchase_order_lines
+        SET 
+            allocated_qty = v_line.allocated_qty,
+            shortfall_qty = v_line.shortfall_qty,
+            status = CASE 
+                        WHEN v_line.shortfall_qty > 0 THEN 'backordered'
+                        ELSE 'allocated'
+                     END,
+            update_at = NOW()
+        WHERE id = v_line.id;
+
+    END LOOP; -- lines
+
+    ----------------------------------------------------------------------
+    -- 3. FINAL STATUS (PO LEVEL)
+    ----------------------------------------------------------------------
+    IF v_total_shortfall = 0 THEN
+        v_status := 'allocated';
+    ELSE
+        v_status := 'backordered';
+    END IF;
+
+    UPDATE public.purchase_orders
+    SET status        = v_status,
+        backorder_qty = v_total_shortfall,
+        allocated_qty = v_total_allocated,
+        update_at     = NOW()
+    WHERE id = p_po_id;
+
+    ----------------------------------------------------------------------
+    -- 3B. AUTO-CREATE PRODUCTION ORDER
+    ----------------------------------------------------------------------
+    IF v_total_shortfall = 0
+       AND v_po.is_copack IS TRUE
+       AND v_po.operation_supplies_materials IS TRUE
+    THEN
+        PERFORM public.fn_auto_create_copack_batch_for_po(p_po_id);
+    END IF;
+
+    ----------------------------------------------------------------------
+    -- 4. RETURN FINAL JSON
+    ----------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_status,
+        'total_required',  v_total_required,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_shortfall,
+        'bom_allocation',  v_lines,
+        'client_prs',      v_client_prs,
+        'ops_prs',         v_ops_prs,
+        'errors',          v_errors
+    );
+    
+END;
+$function$
+"
+allocate_copack_po_ops_dual_pr,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_ops_dual_pr(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po            public.purchase_orders%ROWTYPE;
+    v_line          public.purchase_order_lines%ROWTYPE;
+    v_formula       public.formulas%ROWTYPE;
+    v_item          public.formula_items%ROWTYPE;
+    v_mat           public.inventory_materials%ROWTYPE;
+
+    v_required      numeric;
+    v_available     numeric;
+    v_alloc         numeric;
+    v_short         numeric;
+
+    v_total_required   numeric := 0;
+    v_total_allocated  numeric := 0;
+    v_total_shortfall  numeric := 0;
+
+    v_status       text := 'approved';
+
+    v_lines        jsonb := '[]'::jsonb;
+    v_errors       jsonb := '[]'::jsonb;
+    v_ops_prs      jsonb := '[]'::jsonb;
+
+    v_existing_ops_pr_id uuid;
+
+    v_is_bundle boolean := FALSE;
+BEGIN
+    ----------------------------------------------------------------------
+    -- 1. LOAD & LOCK PO HEADER
+    ----------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found','po_id',p_po_id);
+    END IF;
+
+    -- Detect bundle packaging
+    v_is_bundle := (LOWER(COALESCE(v_po.packaging_type,'')) = 'bundle');
+
+    ----------------------------------------------------------------------
+    -- 2. GUARD RAILS
+    ----------------------------------------------------------------------
+    IF NOT COALESCE(v_po.is_copack, FALSE) THEN
+        RETURN jsonb_build_object('status','skipped','reason','not a copack PO');
+    END IF;
+
+    IF NOT COALESCE(v_po.operation_supplies_materials, FALSE) THEN
+        RETURN jsonb_build_object('status','skipped','reason','operation_supplies_materials = false');
+    END IF;
+
+    IF COALESCE(v_po.client_materials_required, FALSE) THEN
+        RETURN jsonb_build_object('status','skipped','reason','client_materials_required = true (use client RPC)');
+    END IF;
+
+    v_status := 'processing';
+
+    ----------------------------------------------------------------------
+    -- 3. LOOP PO LINES
+    ----------------------------------------------------------------------
+    FOR v_line IN
+        SELECT * FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+        v_line.allocated_qty := 0;
+        v_line.shortfall_qty := 0;
+
+        ------------------------------------------------------------------
+        -- 3.1 FIND FORMULA
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p ON p.id = f.product_id
+        WHERE LOWER(TRIM(p.product_name)) = LOWER(TRIM(v_line.product_name))
+        ORDER BY f.version DESC, f.created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            v_errors := v_errors || jsonb_build_array(
+                jsonb_build_object(
+                    'po_line_id', v_line.id,
+                    'error','No BOM found',
+                    'product', v_line.product_name
+                )
+            );
+            CONTINUE;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 3.2 LOOP BOM ITEMS
+        ------------------------------------------------------------------
+        FOR v_item IN
+            SELECT * FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+            v_total_required := v_total_required + v_required;
+
+            ------------------------------------------------------------------
+            -- LOAD MATERIAL
+            ------------------------------------------------------------------
+            SELECT *
+            INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                v_alloc := 0;
+                v_short := v_required;
+
+                v_total_shortfall := v_total_shortfall + v_short;
+                v_line.shortfall_qty := v_line.shortfall_qty + v_short;
+
+                v_errors := v_errors || jsonb_build_array(
+                    jsonb_build_object(
+                        'material_id', v_item.material_id,
+                        'error','Material not in inventory'
+                    )
+                );
+
+                CONTINUE;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- COMPUTE ALLOCATION (NO RESERVATION)
+            ------------------------------------------------------------------
+            v_available := GREATEST(
+                COALESCE(v_mat.total_available,0) - COALESCE(v_mat.reserved_qty,0),
+                0
+            );
+
+            v_alloc := LEAST(v_available, v_required);
+            v_short := v_required - v_alloc;
+
+            v_line.allocated_qty := v_line.allocated_qty + v_alloc;
+            v_line.shortfall_qty := v_line.shortfall_qty + v_short;
+
+            v_total_allocated := v_total_allocated + v_alloc;
+            v_total_shortfall := v_total_shortfall + v_short;
+
+            ------------------------------------------------------------------
+            -- CREATE PR FOR SHORTFALLS
+            ------------------------------------------------------------------
+            IF v_short > 0 THEN
+                v_status := 'backordered';
+
+                SELECT id
+                INTO v_existing_ops_pr_id
+                FROM public.purchase_requisitions
+                WHERE po_id = p_po_id
+                  AND item_name = v_mat.product_name
+                  AND source = 'copack_po_ops'
+                  AND item_type = 'raw_material'
+                  AND is_client_material = FALSE
+                  AND status IN ('Open','Pending','Requested')
+                LIMIT 1;
+
+                IF v_existing_ops_pr_id IS NULL THEN
+                    INSERT INTO public.purchase_requisitions (
+                        item_type, item_name, required_qty,
+                        needed_by, source, status, notes,
+                        po_id, is_client_material
+                    )
+                    VALUES (
+                        'raw_material',
+                        v_mat.product_name,
+                        v_short,
+                        v_po.requested_ship_date,
+                        'copack_po_ops',
+                        'Open',
+                        'Ops needs more materials',
+                        p_po_id,
+                        FALSE
+                    )
+                    RETURNING id INTO v_existing_ops_pr_id;
+
+                    v_ops_prs := v_ops_prs || jsonb_build_array(
+                        jsonb_build_object(
+                            'pr_id', v_existing_ops_pr_id,
+                            'material', v_mat.product_name,
+                            'short', v_short
+                        )
+                    );
+                END IF;
+            END IF;
+
+        END LOOP;
+
+        ------------------------------------------------------------------
+        -- UPDATE PURCHASE ORDER LINE
+        ------------------------------------------------------------------
+        UPDATE public.purchase_order_lines
+        SET
+            allocated_qty = v_line.allocated_qty,
+            shortfall_qty = v_line.shortfall_qty,
+            status = CASE WHEN v_line.shortfall_qty > 0 THEN 'backordered' ELSE 'allocated' END,
+            update_at = NOW()
+        WHERE id = v_line.id;
+
+    END LOOP; -- END LINE LOOP
+
+    ----------------------------------------------------------------------
+    -- 4. BUNDLE RULE ENFORCEMENT
+    ----------------------------------------------------------------------
+    IF v_is_bundle AND v_total_shortfall > 0 THEN
+        RETURN jsonb_build_object(
+            'po_id', p_po_id,
+            'status', 'bundle_blocked',
+            'reason', 'Bundle packaging requires full component availability',
+            'total_shortfall', v_total_shortfall,
+            'lines', v_lines
+        );
+    END IF;
+
+    ----------------------------------------------------------------------
+    -- 5. UPDATE PO HEADER STATUS
+    ----------------------------------------------------------------------
+    IF v_total_shortfall = 0 THEN
+        v_status := 'allocated';
+    ELSE
+        v_status := 'backordered';
+    END IF;
+
+    UPDATE public.purchase_orders
+    SET
+        status        = v_status,
+        allocated_qty = v_total_allocated,
+        backorder_qty = v_total_shortfall,
+        update_at     = NOW()
+    WHERE id = p_po_id;
+
+    ----------------------------------------------------------------------
+    -- 7. RETURN SUMMARY
+    ----------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_status,
+        'total_required', v_total_required,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_shortfall,
+        'lines', v_lines,
+        'ops_prs', v_ops_prs,
+        'errors', v_errors
+    );
+END;
+$function$
+"
+allocate_copack_po_ops_materials,"CREATE OR REPLACE FUNCTION public.allocate_copack_po_ops_materials(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po          purchase_orders%ROWTYPE;
+    v_line        purchase_order_lines%ROWTYPE;
+    v_formula     formulas%ROWTYPE;
+    v_item        formula_items%ROWTYPE;
+    v_mat         inventory_materials%ROWTYPE;
+
+    v_required    numeric;
+    v_available   numeric;
+    v_alloc       numeric;
+    v_short       numeric;
+
+    v_total_required   numeric := 0;
+    v_total_allocated  numeric := 0;
+    v_total_shortfall  numeric := 0;
+
+    v_po_status   text := 'approved';
+
+    v_lines  jsonb := '[]'::jsonb;
+    v_errors jsonb := '[]'::jsonb;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1. LOCK PO HEADER
+    ------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'status','error',
+            'message','PO not found',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 2. GUARD RAILS (tamang type ng PO lang)
+    ------------------------------------------------------------------
+    -- already processed? huwag ulitin
+    IF v_po.status IN ('allocated','backordered') THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','already processed',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    -- dapat Copack
+    IF NOT COALESCE(v_po.is_copack, false) THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','not a copack PO',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    -- dapat operation-supplied, hindi client-supplied
+    IF NOT COALESCE(v_po.operation_supplies_materials, false) THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','operation_supplies_materials is false',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    IF COALESCE(v_po.client_materials_required, false) THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','client_materials_required = true (use client allocation RPC)',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 3. LOOP ALL PO LINES
+    ------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+        ------------------------------------------------------------------
+        -- 3.1 FIND FORMULA (BOM) FOR THIS PRODUCT
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p
+          ON p.id = f.product_id
+        WHERE LOWER(TRIM(p.product_name)) = LOWER(TRIM(v_line.product_name))
+        ORDER BY f.version DESC, f.created_at DESC NULLS LAST
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            v_errors := v_errors || jsonb_build_array(
+                jsonb_build_object(
+                    'po_line_id', v_line.id,
+                    'product', v_line.product_name,
+                    'error', 'No formula (BOM) found for product'
+                )
+            );
+            CONTINUE;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 3.2 LOOP FORMULA ITEMS (RAW + PACKAGING)
+        ------------------------------------------------------------------
+        FOR v_item IN
+            SELECT *
+            FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            -- required = qty_per_unit * PO line quantity
+            v_required := COALESCE(v_item.qty_per_unit, 0) * COALESCE(v_line.quantity, 0);
+            v_total_required := v_total_required + v_required;
+
+            ------------------------------------------------------------------
+            -- 3.2.1 FIND MATERIAL INVENTORY
+            ------------------------------------------------------------------
+            SELECT *
+            INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                v_alloc := 0;
+                v_short := v_required;
+
+                v_errors := v_errors || jsonb_build_array(
+                    jsonb_build_object(
+                        'po_line_id', v_line.id,
+                        'product', v_line.product_name,
+                        'material_id', v_item.material_id,
+                        'error','Material not found in inventory_materials'
+                    )
+                );
+            ELSE
+                v_available := COALESCE(v_mat.total_available, 0) - COALESCE(v_mat.reserved_qty, 0);
+                IF v_available < 0 THEN
+                    v_available := 0;
+                END IF;
+
+                v_alloc := LEAST(v_available, v_required);
+                v_short := v_required - v_alloc;
+
+                ------------------------------------------------------------------
+                -- 3.2.2 CREATE INVENTORY RESERVATION IF MAY ALLOCATION
+                ------------------------------------------------------------------
+                IF v_alloc > 0 THEN
+                    INSERT INTO public.inventory_reservations (
+                        po_id,
+                        line_id,
+                        product_name,
+                        bucket,
+                        sku,
+                        qty,
+                        material_id,
+                        status
+                    )
+                    VALUES (
+                        p_po_id,
+                        v_line.id,
+                        v_line.product_name,
+                        'copack_ops',
+                        v_mat.sku,
+                        v_alloc,
+                        v_mat.id,
+                        'active'
+                    );
+
+                    UPDATE public.inventory_materials
+                    SET reserved_qty = COALESCE(reserved_qty, 0) + v_alloc
+                    WHERE id = v_mat.id;
+                END IF;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- 3.2.3 SHORTFALL → AUTO PURCHASE REQUISITION
+            ------------------------------------------------------------------
+            IF v_short > 0 THEN
+                v_po_status := 'backordered';
+
+                INSERT INTO public.purchase_requisitions (
+                    item_type,
+                    item_name,
+                    required_qty,
+                    needed_by,
+                    source,
+                    status,
+                    notes,
+                    po_id
+                )
+                VALUES (
+                    'raw_material',
+                    COALESCE(v_mat.product_name, v_item.material_id::text),
+                    v_short,
+                    v_po.requested_ship_date,
+                    'copack_po_ops',
+                    'Open',
+                    'Auto PR from copack PO material shortfall',
+                    p_po_id
+                );
+            END IF;
+
+            ------------------------------------------------------------------
+            -- 3.2.4 ACCUMULATE TOTALS + JSON LINES
+            ------------------------------------------------------------------
+            v_total_allocated := v_total_allocated + v_alloc;
+            v_total_shortfall := v_total_shortfall + v_short;
+
+            v_lines := v_lines || jsonb_build_array(
+                jsonb_build_object(
+                    'po_line_id',    v_line.id,
+                    'product',       v_line.product_name,
+                    'material_id',   v_item.material_id,
+                    'material_name', COALESCE(v_mat.product_name, NULL),
+                    'required_qty',  v_required,
+                    'allocated_qty', v_alloc,
+                    'shortfall_qty', v_short
+                )
+            );
+        END LOOP; -- formula_items
+    END LOOP;     -- po lines
+
+    ------------------------------------------------------------------
+    -- 4. FINAL PO STATUS (ALLOCATED vs BACKORDERED)
+    ------------------------------------------------------------------
+    IF v_total_required = 0 THEN
+        -- Walang na-process na BOM, huwag galawin ang PO status
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','no BOM items processed for this PO',
+            'po_id', p_po_id,
+            'errors', v_errors
+        );
+    END IF;
+
+    IF v_total_shortfall = 0 THEN
+        v_po_status := 'allocated';
+    ELSE
+        v_po_status := 'backordered';
+    END IF;
+
+    UPDATE public.purchase_orders
+    SET
+        status    = v_po_status,
+        update_at = now()
+    WHERE id = p_po_id;
+
+    ------------------------------------------------------------------
+    -- 5. RETURN SUMMARY
+    ------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id',           p_po_id,
+        'status',          v_po_status,
+        'total_required',  v_total_required,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_shortfall,
+        'lines',           v_lines,
+        'errors',          v_errors
+    );
+END;
+$function$
+"
+consume_materials_for_batch,"CREATE OR REPLACE FUNCTION public.consume_materials_for_batch(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  --------------------------------------------------------------------
+  -- 1️⃣ Deduct inventory based on reservations
+  --------------------------------------------------------------------
+  UPDATE inventory_materials m
+  SET
+    total_available = GREATEST(m.total_available - r.qty, 0),
+    reserved_qty    = GREATEST(m.reserved_qty - r.qty, 0)
+  FROM inventory_reservations r
+  WHERE r.batch_id = p_batch_id
+    AND r.material_id = m.id
+    AND r.status = 'active';
+
+  --------------------------------------------------------------------
+  -- 2️⃣ Mark reservations as consumed (optional)
+  --------------------------------------------------------------------
+  UPDATE inventory_reservations
+  SET
+    is_consumed = true,
+    status = 'consumed'
+  WHERE batch_id = p_batch_id;
+
+  --------------------------------------------------------------------
+  -- 3️⃣ Delete reservation rows (your logic)
+  --------------------------------------------------------------------
+  DELETE FROM inventory_reservations
+  WHERE batch_id = p_batch_id;
+
+END;
+$function$
+"
+consume_reservations,"CREATE OR REPLACE FUNCTION public.consume_reservations(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  DELETE FROM inventory_reservations
+  WHERE batch_id = p_batch_id;
+END;
+$function$
+"
+fn_allocate_copack_dual_pr,"CREATE OR REPLACE FUNCTION public.fn_allocate_copack_dual_pr(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po            public.purchase_orders%ROWTYPE;
+    v_line          public.purchase_order_lines%ROWTYPE;
+    v_formula       public.formulas%ROWTYPE;
+    v_item          public.formula_items%ROWTYPE;
+    v_mat           public.inventory_materials%ROWTYPE;
+
+    v_required      numeric;
+    v_available     numeric;
+    v_alloc         numeric;
+    v_short         numeric;
+
+    v_total_required   numeric := 0;
+    v_total_allocated  numeric := 0;
+    v_total_shortfall  numeric := 0;
+
+    v_status       text := '';
+
+    v_lines        jsonb := '[]'::jsonb;
+    v_errors       jsonb := '[]'::jsonb;
+    v_client_prs   jsonb := '[]'::jsonb;
+    v_ops_prs      jsonb := '[]'::jsonb;
+
+    v_existing_client_pr_id uuid;
+    v_existing_ops_pr_id    uuid;
+BEGIN
+    ----------------------------------------------------------------------
+    -- 1. LOAD PO (LOCK)
+    ----------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    IF v_po.is_copack IS NOT TRUE THEN
+        RETURN jsonb_build_object('status','skipped','reason','not a copack PO');
+    END IF;
+
+    v_status := 'processing';
+
+    ----------------------------------------------------------------------
+    -- 2. LOOP PO LINES
+    ----------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+
+        ------------------------------------------------------------------
+        -- 2.1 FIND FORMULA
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p
+          ON p.id = f.product_id
+        WHERE TRIM(LOWER(p.product_name)) = TRIM(LOWER(v_line.product_name))
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            v_errors := v_errors || jsonb_build_array(
+                jsonb_build_object(
+                    'product', v_line.product_name,
+                    'error', 'No BOM found'
+                )
+            );
+            CONTINUE;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 2.2 LOOP BOM ITEMS
+        ------------------------------------------------------------------
+        FOR v_item IN
+            SELECT *
+            FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+            v_total_required := v_total_required + v_required;
+
+            ------------------------------------------------------------------
+            -- LOAD MATERIAL
+            ------------------------------------------------------------------
+            SELECT *
+            INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                v_short := v_required;
+                v_total_shortfall := v_total_shortfall + v_short;
+
+                v_errors := v_errors || jsonb_build_array(
+                    jsonb_build_object(
+                        'material_id', v_item.material_id,
+                        'error','Material not in inventory'
+                    )
+                );
+
+                CONTINUE;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- COMPUTE ALLOCATION
+            ------------------------------------------------------------------
+            v_available := GREATEST(
+                COALESCE(v_mat.total_available,0) - COALESCE(v_mat.reserved_qty,0),
+                0
+            );
+
+            v_alloc := LEAST(v_available, v_required);
+            v_short := v_required - v_alloc;
+
+            v_total_allocated := v_total_allocated + v_alloc;
+            v_total_shortfall := v_total_shortfall + v_short;
+
+            ------------------------------------------------------------------
+            -- 2.3 OPS RESERVATION REMOVED (per request)
+            ------------------------------------------------------------------
+            -- NOTHING HERE (NO reservation, NO reserved_qty update)
+
+            ------------------------------------------------------------------
+            -- 2.4 CLIENT SHORTFALL PR
+            ------------------------------------------------------------------
+            IF v_short > 0 AND v_po.client_materials_required = TRUE THEN
+                
+                SELECT id INTO v_existing_client_pr_id
+                FROM public.purchase_requisitions
+                WHERE po_id = p_po_id
+                  AND item_type = 'client_material'
+                  AND item_name = v_mat.product_name
+                  AND source = 'copack_po_client'
+                  AND is_client_material = TRUE
+                  AND status IN ('Open','Pending','Requested')
+                LIMIT 1;
+
+                IF v_existing_client_pr_id IS NULL THEN
+                    INSERT INTO public.purchase_requisitions (
+                        item_type, item_name, required_qty, needed_by,
+                        source, status, notes, po_id, is_client_material
+                    )
+                    VALUES (
+                        'client_material',
+                        v_mat.product_name,
+                        v_short,
+                        v_po.requested_ship_date,
+                        'copack_po_client',
+                        'Open',
+                        'Client must supply more materials',
+                        p_po_id,
+                        TRUE
+                    )
+                    RETURNING id INTO v_existing_client_pr_id;
+
+                    v_client_prs := v_client_prs || jsonb_build_array(
+                        jsonb_build_object(
+                            'pr_id', v_existing_client_pr_id,
+                            'material', v_mat.product_name,
+                            'short', v_short
+                        )
+                    );
+                END IF;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- 2.5 OPS SHORTFALL PR
+            ------------------------------------------------------------------
+            IF v_short > 0 AND v_po.operation_supplies_materials = TRUE THEN
+                
+                SELECT id INTO v_existing_ops_pr_id
+                FROM public.purchase_requisitions
+                WHERE po_id = p_po_id
+                  AND item_type = 'raw_material'
+                  AND item_name = v_mat.product_name
+                  AND source = 'copack_po_ops'
+                  AND is_client_material = FALSE
+                  AND status IN ('Open','Pending','Requested')
+                LIMIT 1;
+
+                IF v_existing_ops_pr_id IS NULL THEN
+                    INSERT INTO public.purchase_requisitions (
+                        item_type, item_name, required_qty, needed_by,
+                        source, status, notes, po_id, is_client_material
+                    )
+                    VALUES (
+                        'raw_material',
+                        v_mat.product_name,
+                        v_short,
+                        v_po.requested_ship_date,
+                        'copack_po_ops',
+                        'Open',
+                        'Ops needs more materials',
+                        p_po_id,
+                        FALSE
+                    )
+                    RETURNING id INTO v_existing_ops_pr_id;
+
+                    v_ops_prs := v_ops_prs || jsonb_build_array(
+                        jsonb_build_object(
+                            'pr_id', v_existing_ops_pr_id,
+                            'material', v_mat.product_name,
+                            'short', v_short
+                        )
+                    );
+                END IF;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- 2.6 SUMMARY
+            ------------------------------------------------------------------
+            v_lines := v_lines || jsonb_build_array(
+                jsonb_build_object(
+                    'material', v_mat.product_name,
+                    'required', v_required,
+                    'allocated', v_alloc,
+                    'short', v_short
+                )
+            );
+
+        END LOOP; -- items
+    END LOOP; -- lines
+
+    ----------------------------------------------------------------------
+    -- 3. FINAL STATUS
+    ----------------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- 3. FINAL STATUS
+    ----------------------------------------------------------------------
+    IF v_total_shortfall = 0 THEN
+        v_status := 'allocated';
+    ELSE
+        v_status := 'backordered';
+    END IF;
+
+    UPDATE public.purchase_orders
+    SET status        = v_status,
+        backorder_qty = v_total_shortfall,
+        allocated_qty = v_total_allocated,
+        update_at     = NOW()
+    WHERE id = p_po_id;
+
+    ----------------------------------------------------------------------
+    -- 3B. AUTO-CREATE PRODUCTION ORDER IF:
+    --     • WALANG SHORTFALL
+    --     • COPACK
+    --     • OPS ANG MAGSU-SUPPLY NG MATERIALS
+    ----------------------------------------------------------------------
+    IF v_total_shortfall = 0
+       AND v_po.is_copack IS TRUE
+       AND v_po.operation_supplies_materials IS TRUE
+    THEN
+        PERFORM public.fn_auto_create_copack_batch_for_po(p_po_id);
+    END IF;
+    ----------------------------------------------------------------------
+    -- 4. RETURN
+    ----------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_status,
+        'total_required',  v_total_required,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_shortfall,
+        'bom_allocation',  v_lines,
+        'client_prs',      v_client_prs,
+        'ops_prs',         v_ops_prs,
+        'errors',          v_errors
+    );
+END;
+$function$
+"
+fn_allocate_copack_po_client_materials,"CREATE OR REPLACE FUNCTION public.fn_allocate_copack_po_client_materials(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po              purchase_orders%ROWTYPE;
+    v_line            purchase_order_lines%ROWTYPE;
+    v_formula         formulas%ROWTYPE;
+    v_item            formula_items%ROWTYPE;
+    v_mat             inventory_materials%ROWTYPE;
+
+    v_required        numeric;
+    v_available       numeric;
+    v_alloc           numeric;
+    v_short           numeric;
+
+    v_total_required  numeric := 0;
+    v_total_allocated numeric := 0;
+    v_total_shortfall numeric := 0;
+
+    v_po_status       text := 'allocated';
+
+    v_lines           jsonb := '[]'::jsonb;
+    v_errors          jsonb := '[]'::jsonb;
+BEGIN
+    ----------------------------------------------------------------------
+    -- 1. Load PO
+    ----------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'status','error',
+            'message','PO not found',
+            'po_id', p_po_id
+        );
+    END IF;
+
+    ----------------------------------------------------------------------
+    -- 2. Guard Rails
+    ----------------------------------------------------------------------
+    IF v_po.status IN ('allocated','backordered') THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','already processed'
+        );
+    END IF;
+
+    -- Must be Copack
+    IF NOT COALESCE(v_po.is_copack, false) THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','not a copack PO'
+        );
+    END IF;
+
+    -- Must require client-supplied materials
+    IF NOT COALESCE(v_po.client_materials_required, false) THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','client_materials_required = false (use ops allocation RPC)'
+        );
+    END IF;
+
+    ----------------------------------------------------------------------
+    -- 3. Loop PO Lines
+    ----------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM public.purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+        FOR UPDATE
+    LOOP
+
+        ------------------------------------------------------------------
+        -- 3.1 Find Formula (client BOM)
+        ------------------------------------------------------------------
+        SELECT f.*
+        INTO v_formula
+        FROM public.formulas f
+        JOIN public.products p ON p.id = f.product_id
+        WHERE LOWER(TRIM(p.product_name)) = LOWER(TRIM(v_line.product_name))
+        ORDER BY f.version DESC, f.created_at DESC
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+            v_errors := v_errors || jsonb_build_array(
+                jsonb_build_object(
+                    'po_line_id', v_line.id,
+                    'product', v_line.product_name,
+                    'error','No BOM found for client materials'
+                )
+            );
+            CONTINUE;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 3.2 Loop all BOM items
+        ------------------------------------------------------------------
+        FOR v_item IN
+            SELECT *
+            FROM public.formula_items
+            WHERE formula_id = v_formula.id
+        LOOP
+            v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_line.quantity,0);
+            v_total_required := v_total_required + v_required;
+
+            ------------------------------------------------------------------
+            -- 3.3 Get client-supplied material inventory
+            ------------------------------------------------------------------
+            SELECT *
+            INTO v_mat
+            FROM public.inventory_materials
+            WHERE id = v_item.material_id
+              AND is_client_supplied = true
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                v_alloc := 0;
+                v_short := v_required;
+
+                v_errors := v_errors || jsonb_build_array(
+                    jsonb_build_object(
+                        'po_line_id', v_line.id,
+                        'material_id', v_item.material_id,
+                        'error','Material not found among client-supplied inventory'
+                    )
+                );
+            ELSE
+                v_available := COALESCE(v_mat.total_available,0) - COALESCE(v_mat.reserved_qty,0);
+                IF v_available < 0 THEN v_available := 0; END IF;
+
+                v_alloc := LEAST(v_available, v_required);
+                v_short := v_required - v_alloc;
+
+                ------------------------------------------------------------------
+                -- 3.3.1 Create reservation only if allocated
+                ------------------------------------------------------------------
+                IF v_alloc > 0 THEN
+                    INSERT INTO public.inventory_reservations (
+                        po_id,
+                        line_id,
+                        product_name,
+                        bucket,
+                        sku,
+                        qty,
+                        material_id,
+                        status
+                    )
+                    VALUES (
+                        p_po_id,
+                        v_line.id,
+                        v_line.product_name,
+                        'client_supplied',
+                        v_mat.sku,
+                        v_alloc,
+                        v_mat.id,
+                        'active'
+                    );
+
+                    UPDATE public.inventory_materials
+                    SET reserved_qty = reserved_qty + v_alloc
+                    WHERE id = v_mat.id;
+                END IF;
+
+                ------------------------------------------------------------------
+                -- 3.3.2 Create Client PR if shortfall
+                ------------------------------------------------------------------
+                IF v_short > 0 THEN
+                    v_po_status := 'backordered';
+
+                    INSERT INTO public.purchase_requisitions (
+                        item_type,
+                        item_name,
+                        required_qty,
+                        needed_by,
+                        source,
+                        status,
+                        notes,
+                        po_id,
+                        is_client_material
+                    )
+                    VALUES (
+                        'client_material',
+                        v_mat.product_name,
+                        v_short,
+                        v_po.requested_ship_date,
+                        'copack_po_client',
+                        'Open',
+                        'Client must supply missing materials for Copack PO',
+                        p_po_id,
+                        true
+                    );
+                END IF;
+            END IF;
+
+            ------------------------------------------------------------------
+            -- Summaries
+            ------------------------------------------------------------------
+            v_total_allocated := v_total_allocated + v_alloc;
+            v_total_shortfall := v_total_shortfall + v_short;
+
+            v_lines := v_lines || jsonb_build_array(
+                jsonb_build_object(
+                    'po_line_id', v_line.id,
+                    'material_id', v_item.material_id,
+                    'material_name', COALESCE(v_mat.product_name,NULL),
+                    'required_qty', v_required,
+                    'allocated_qty', v_alloc,
+                    'shortfall_qty', v_short
+                )
+            );
+        END LOOP; -- formula items
+
+    END LOOP; -- PO lines
+
+    ----------------------------------------------------------------------
+    -- 4. Update PO Status
+    ----------------------------------------------------------------------
+    UPDATE public.purchase_orders
+    SET status = v_po_status,
+        update_at = now()
+    WHERE id = p_po_id;
+
+    ----------------------------------------------------------------------
+    -- 5. Return Summary
+    ----------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_po_status,
+        'total_required', v_total_required,
+        'total_allocated', v_total_allocated,
+        'total_shortfall', v_total_shortfall,
+        'lines', v_lines,
+        'errors', v_errors
+    );
+END;
+$function$
+"
+fn_allocate_po_to_finished_goods,"CREATE OR REPLACE FUNCTION public.fn_allocate_po_to_finished_goods(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_line RECORD;
+    v_fg RECORD;
+    v_alloc NUMERIC;
+    v_short NUMERIC;
+    v_total_shortfall NUMERIC := 0;
+    v_status TEXT := 'allocated';
+    v_results JSONB := '[]'::jsonb;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1) Lock PO to prevent race conditions
+    ------------------------------------------------------------------
+    PERFORM 1 FROM purchase_orders WHERE id = p_po_id FOR UPDATE;
+
+    ------------------------------------------------------------------
+    -- 2) Loop all PO lines
+    ------------------------------------------------------------------
+    FOR v_line IN
+        SELECT *
+        FROM purchase_order_lines
+        WHERE purchase_order_id = p_po_id
+        ORDER BY created_at
+    LOOP
+        ------------------------------------------------------------------
+        -- 3) Get finished goods for the product
+        ------------------------------------------------------------------
+        SELECT *
+        INTO v_fg
+        FROM finished_goods
+        WHERE product_name = v_line.product_name
+        LIMIT 1;
+
+        IF v_fg.id IS NULL THEN
+            v_alloc := 0;
+            v_short := v_line.quantity;
+        ELSE
+            IF v_fg.available_qty >= v_line.quantity THEN
+                v_alloc := v_line.quantity;
+                v_short := 0;
+            ELSE
+                v_alloc := v_fg.available_qty;
+                v_short := v_line.quantity - v_alloc;
+            END IF;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 4) Apply allocation ONLY if > 0
+        ------------------------------------------------------------------
+        IF v_alloc > 0 THEN
+            UPDATE finished_goods
+            SET 
+                available_qty = available_qty - v_alloc,
+                reserved_qty = reserved_qty + v_alloc,
+                updated_at = NOW()
+            WHERE id = v_fg.id;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 5) If shortage exists, mark PO as backordered
+        ------------------------------------------------------------------
+        IF v_short > 0 THEN
+            v_status := 'backordered';
+            v_total_shortfall := v_total_shortfall + v_short;
+        END IF;
+
+        ------------------------------------------------------------------
+        -- 6) Insert result per line
+        ------------------------------------------------------------------
+        v_results := v_results || jsonb_build_object(
+            'line_id', v_line.id,
+            'product', v_line.product_name,
+            'ordered', v_line.quantity,
+            'allocated', v_alloc,
+            'shortfall', v_short,
+            'status', CASE WHEN v_short > 0 THEN 'partial' ELSE 'allocated' END
+        );
+    END LOOP;
+
+    ------------------------------------------------------------------
+    -- 7) Update PO status
+    ------------------------------------------------------------------
+    UPDATE purchase_orders
+    SET status = v_status
+    WHERE id = p_po_id;
+
+    ------------------------------------------------------------------
+    -- 8) Return structured allocation summary
+    ------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'po_id', p_po_id,
+        'status', v_status,
+        'total_shortfall', v_total_shortfall,
+        'lines', v_results
+    );
+END;
+$function$
+"
+fn_auto_create_batches_from_po_shortfall,"CREATE OR REPLACE FUNCTION public.fn_auto_create_batches_from_po_shortfall(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  v_po           record;
+  v_line         record;
+  v_batch_id     uuid;
+  v_created      int := 0;
+begin
+  --------------------------------------------------------------------------
+  -- 1) Validate PO
+  --------------------------------------------------------------------------
+  select *
+  into v_po
+  from public.purchase_orders
+  where id = p_po_id;
+
+  if not found then
+    return jsonb_build_object(
+      'status',  'error',
+      'message', 'Purchase order not found'
+    );
+  end if;
+
+  --------------------------------------------------------------------------
+  -- 2) Loop PO lines with shortfall
+  --    Assumes:
+  --    - purchase_order_lines.quantity       = ordered
+  --    - purchase_order_lines.allocated_qty  = allocated from FG
+  --    - purchase_order_lines.shortfall_qty  = remaining need
+  --------------------------------------------------------------------------
+  for v_line in
+    select *
+    from public.purchase_order_lines
+    where purchase_order_id = p_po_id
+      and shortfall_qty > 0
+  loop
+    v_batch_id := gen_random_uuid();
+
+    ----------------------------------------------------------------------
+    -- 3) Create a production batch for each shortfall line
+    --    ⚠️ adjust columns to match your production_batches table
+    ----------------------------------------------------------------------
+    insert into public.production_batches (
+      id,
+      customer_id,
+      po_id,
+      product_sku,      -- in your functions, this is what you use
+      qty,
+      status,
+      scheduled_date,
+      created_at
+    )
+    values (
+      v_batch_id,
+      v_po.customer_id,         -- assumes PO has customer_id
+      p_po_id,
+      v_line.product_name,      -- or map to SKU if you have a sku column
+      v_line.shortfall_qty,
+      'Planned',                -- initial status
+      v_po.ship_date,           -- you can also use now() or null
+      now()
+    );
+
+    v_created := v_created + 1;
+
+    ----------------------------------------------------------------------
+    -- (Optional) If you want requirements to be pre-generated:
+    -- perform fn_generate_requirements_for_batch(v_batch_id);
+    -- and/or immediately call fn_reserve_for_batch(v_batch_id)
+    -- if you want auto-reservation as soon as batch is created.
+    ----------------------------------------------------------------------
+    -- perform public.fn_generate_requirements_for_batch(v_batch_id);
+    -- perform public.fn_reserve_for_batch(v_batch_id);
+
+  end loop;
+
+  return jsonb_build_object(
+    'status',          'success',
+    'batches_created', v_created
+  );
+end;
+$function$
+"
+fn_auto_create_copack_batch_for_po,"CREATE OR REPLACE FUNCTION public.fn_auto_create_copack_batch_for_po(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_po              purchase_orders%ROWTYPE;
+    v_first_line      purchase_order_lines%ROWTYPE;
+    v_formula         formulas%ROWTYPE;
+    v_total_qty       numeric := 0;
+    v_batch_id        uuid;
+
+    v_is_bundle       boolean := FALSE;
+    v_shortfall_qty   numeric := 0;
+BEGIN
+    --------------------------------------------------------------------
+    -- 1. LOAD PO
+    --------------------------------------------------------------------
+    SELECT *
+    INTO v_po
+    FROM public.purchase_orders
+    WHERE id = p_po_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 2. MUST BE A COPACK PO
+    --------------------------------------------------------------------
+    IF v_po.is_copack IS NOT TRUE THEN
+        RETURN jsonb_build_object('status','skipped','reason','Not a copack PO');
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 3. DETECT BUNDLE PACKAGING
+    --------------------------------------------------------------------
+    v_is_bundle := (LOWER(COALESCE(v_po.packaging_type,'')) = 'bundle');
+
+    --------------------------------------------------------------------
+    -- 4. READ SHORTFALL (allocator sets this)
+    --------------------------------------------------------------------
+    v_shortfall_qty := COALESCE(v_po.backorder_qty, 0);
+
+    --------------------------------------------------------------------
+    -- 5. BUNDLE RULE: REQUIRE 100% AVAILABILITY
+    --------------------------------------------------------------------
+    IF v_is_bundle AND v_shortfall_qty > 0 THEN
+        RETURN jsonb_build_object(
+            'status','bundle_blocked',
+            'reason','Bundle requires full component availability before batch creation',
+            'shortfall_qty', v_shortfall_qty,
+            'po_id', p_po_id
+        );
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 6. (OPTIONAL SAFETY) Reject if both material flags are FALSE
+    --------------------------------------------------------------------
+    IF v_po.client_materials_required = FALSE 
+       AND v_po.operation_supplies_materials = FALSE THEN
+        RETURN jsonb_build_object(
+            'status','skipped',
+            'reason','Invalid config: No one supplies materials'
+        );
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 7. GET FIRST PO LINE
+    --------------------------------------------------------------------
+    SELECT *
+    INTO v_first_line
+    FROM public.purchase_order_lines
+    WHERE purchase_order_id = p_po_id
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','No PO lines found');
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 8. SUM ALL PO LINE QUANTITIES
+    --------------------------------------------------------------------
+    SELECT SUM(quantity)
+    INTO v_total_qty
+    FROM public.purchase_order_lines
+    WHERE purchase_order_id = p_po_id;
+
+    IF v_total_qty <= 0 THEN
+        RETURN jsonb_build_object('status','error','message','Total quantity is zero');
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 9. FIND FORMULA FOR THE PRODUCT
+    --------------------------------------------------------------------
+    SELECT f.* INTO v_formula
+    FROM public.formulas f
+    JOIN public.products p ON p.id = f.product_id
+    WHERE TRIM(LOWER(p.product_name)) = TRIM(LOWER(v_first_line.product_name))
+    ORDER BY version DESC, created_at DESC
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','Formula not found');
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 10. PREVENT DUPLICATE BATCH CREATION
+    --------------------------------------------------------------------
+    SELECT id INTO v_batch_id
+    FROM public.production_batches
+    WHERE source_po_id = p_po_id
+    LIMIT 1;
+
+    IF v_batch_id IS NOT NULL THEN
+        RETURN jsonb_build_object(
+            'status','exists',
+            'message','Batch already exists for this PO',
+            'batch_id', v_batch_id
+        );
+    END IF;
+
+    --------------------------------------------------------------------
+    -- 11. CREATE ONE SINGLE BATCH ONLY
+    --------------------------------------------------------------------
+    INSERT INTO public.production_batches (
+        source_po_id,
+        source_po_line_id,
+        product_sku,
+        qty,
+        formula_id,
+        customer_id,
+        status,
+        room
+    )
+    VALUES (
+        p_po_id,
+        v_first_line.id,
+        v_first_line.product_name,
+        v_total_qty,
+        v_formula.id,
+        v_po.customer_id,
+        'Scheduled',
+        v_po.location
+    )
+    RETURNING id INTO v_batch_id;
+
+    --------------------------------------------------------------------
+    -- 12. GENERATE REQUIREMENTS BASED ON FORMULA AND MATERIAL FLAGS
+    --------------------------------------------------------------------
+    PERFORM public.fn_generate_requirements_for_batch_dual(v_batch_id);
+
+    --------------------------------------------------------------------
+    -- 13. RETURN SUCCESS RESULT
+    --------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'status','created',
+        'message','Batch successfully created',
+        'po_id', p_po_id,
+        'batch_id', v_batch_id,
+        'batch_qty', v_total_qty,
+        'formula_id', v_formula.id,
+        'product', v_first_line.product_name
+    );
+END;
+$function$
+"
+fn_brand_po_on_approve,"CREATE OR REPLACE FUNCTION public.fn_brand_po_on_approve()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_result jsonb;
+BEGIN
+    IF NEW.status = 'approved'
+       AND COALESCE(NEW.is_copack, false) = false
+       AND OLD.status IS DISTINCT FROM 'approved'
+    THEN
+        SELECT public.allocate_brand_po_finished_first(NEW.id)
+        INTO v_result;
+
+        RAISE NOTICE 'Brand PO allocation executed: %', v_result;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_calc_requirements,"CREATE OR REPLACE FUNCTION public.fn_calc_requirements(p_formula_id uuid, p_target_qty numeric)
+ RETURNS TABLE(material_id uuid, material_name text, uom text, per_unit_qty numeric, required_qty numeric, current_stock numeric, reserved_qty numeric, net_available numeric, shortage_qty numeric)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select
+    fi.material_id,
+    im.product_name as material_name,
+    im.unit_of_measure as uom,
+    coalesce(fi.qty_per_unit,0)::numeric as per_unit_qty,
+    (coalesce(fi.qty_per_unit,0)::numeric * p_target_qty)::numeric as required_qty,
+    v.current_stock,
+    v.reserved_qty,
+    v.net_available,
+    greatest((coalesce(fi.qty_per_unit,0)::numeric * p_target_qty) - v.net_available, 0)::numeric as shortage_qty
+  from formula_items fi
+  join inventory_materials im on im.id = fi.material_id
+  left join v_material_net_stock v on v.material_id = fi.material_id
+  where fi.formula_id = p_formula_id;
+$function$
+"
+fn_complete_batch,"CREATE OR REPLACE FUNCTION public.fn_complete_batch(p_batch_id uuid, p_completed_qty numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_batch   public.production_batches%ROWTYPE;
+  v_result  jsonb;
+BEGIN
+  ------------------------------------------------------------------
+  -- 1️⃣ Load batch and validate
+  ------------------------------------------------------------------
+  SELECT *
+  INTO v_batch
+  FROM public.production_batches
+  WHERE id = p_batch_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'status','error',
+      'message','Batch not found',
+      'batch_id', p_batch_id
+    );
+  END IF;
+
+  IF COALESCE(p_completed_qty,0) <= 0 THEN
+    RETURN jsonb_build_object(
+      'status','error',
+      'message','Completed quantity must be > 0',
+      'batch_id', p_batch_id
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 2️⃣ Mark batch as completed
+  ------------------------------------------------------------------
+  UPDATE public.production_batches
+  SET
+      status        = 'Completed',
+      completed_qty = p_completed_qty,
+      end_date      = now()
+  WHERE id = p_batch_id;
+
+  ------------------------------------------------------------------
+  -- 3️⃣ Upsert into finished_goods (corrected: product_sku used)
+  ------------------------------------------------------------------
+  UPDATE public.finished_goods fg
+  SET
+      available_qty = COALESCE(fg.available_qty,0) + p_completed_qty,
+      updated_at    = now()
+  WHERE fg.product_name = v_batch.product_sku;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.finished_goods (
+      id,
+      product_name,
+      available_qty,
+      reserved_qty,
+      location,
+      updated_at
+    )
+    VALUES (
+      gen_random_uuid(),
+      v_batch.product_sku,
+      p_completed_qty,
+      0,
+      'Main Warehouse',
+      now()
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 4️⃣ Post yield variance entry
+  ------------------------------------------------------------------
+  SELECT public.fn_post_yield_variance(p_batch_id)
+  INTO v_result;
+
+  ------------------------------------------------------------------
+  -- 5️⃣ Return unified output
+  ------------------------------------------------------------------
+  RETURN jsonb_build_object(
+    'status',          'success',
+    'batch_id',        p_batch_id,
+    'product_sku',     v_batch.product_sku,
+    'completed_qty',   p_completed_qty,
+    'variance_result', v_result
+  );
+
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'status','error',
+      'message', sqlerrm,
+      'batch_id', p_batch_id
+    );
+END;
+$function$
+"
+fn_complete_batch,"CREATE OR REPLACE FUNCTION public.fn_complete_batch(p_batch_id uuid, p_completed_qty numeric, p_scrap_qty numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_batch production_batches%ROWTYPE;
+  v_fg_final numeric;
+  v_variance jsonb;
+  v_scrap_percent numeric;
+BEGIN
+  --------------------------------------------------------------------
+  -- 1. Load batch
+  --------------------------------------------------------------------
+  SELECT * INTO v_batch
+  FROM production_batches
+  WHERE id = p_batch_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status','error','message','Batch not found');
+  END IF;
+
+  IF p_completed_qty <= 0 THEN
+    RETURN jsonb_build_object('status','error','message','Completed qty must be > 0');
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 2. Compute finished goods output
+  --------------------------------------------------------------------
+  v_fg_final := GREATEST(p_completed_qty - COALESCE(p_scrap_qty,0), 0);
+
+  --------------------------------------------------------------------
+  -- 3. UPDATE batch (DO NOT update scrap_percent!)
+  --------------------------------------------------------------------
+  UPDATE production_batches
+  SET 
+      completed_qty = p_completed_qty,
+      scrap_qty     = p_scrap_qty,
+      status        = 'Completed',
+      end_date      = now()
+  WHERE id = p_batch_id;
+
+  --------------------------------------------------------------------
+  -- 4. Update Finished Goods
+  --------------------------------------------------------------------
+  UPDATE finished_goods fg
+  SET available_qty = COALESCE(fg.available_qty,0) + v_fg_final,
+      updated_at = now()
+  WHERE fg.product_name = v_batch.product_sku;
+
+  IF NOT FOUND THEN
+    INSERT INTO finished_goods(
+      id, product_name, available_qty, reserved_qty, location, updated_at
+    )
+    VALUES(
+      gen_random_uuid(),
+      v_batch.product_sku,
+      v_fg_final,
+      0,
+      'Main Warehouse',
+      now()
+    );
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 5. Compute yield variance
+  --------------------------------------------------------------------
+  SELECT public.fn_post_yield_variance(p_batch_id)
+  INTO v_variance;
+
+  --------------------------------------------------------------------
+  -- 6. Scrap tolerance check → create CAPA if exceeded
+  --------------------------------------------------------------------
+  v_scrap_percent :=
+    CASE WHEN (p_scrap_qty + p_completed_qty) > 0
+      THEN (p_scrap_qty / (p_scrap_qty + p_completed_qty)) * 100
+      ELSE 0 END;
+
+  IF v_scrap_percent > COALESCE(v_batch.scrap_tolerance, 5) THEN
+    INSERT INTO capa_tasks(
+      id, batch_id, product_sku, issue_type,
+      scrap_qty, scrap_percent, tolerance, status, created_at
+    )
+    VALUES(
+      gen_random_uuid(),
+      p_batch_id,
+      v_batch.product_sku,
+      'SCRAP_EXCEEDED',
+      p_scrap_qty,
+      v_scrap_percent,
+      v_batch.scrap_tolerance,
+      'Open',
+      now()
+    );
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 7. Return success JSON
+  --------------------------------------------------------------------
+  RETURN jsonb_build_object(
+    'status','success',
+    'batch_id', p_batch_id,
+    'final_fg_qty', v_fg_final,
+    'scrap_percent', v_scrap_percent,
+    'variance', v_variance
+  );
+END;
+$function$
+"
+fn_copack_material_check,"CREATE OR REPLACE FUNCTION public.fn_copack_material_check(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  v_po record;
+  v_line record;
+  v_item record;
+  v_available numeric;
+  v_required numeric;
+  v_shortage numeric;
+  v_any_shortage boolean;
+  v_result jsonb := '[]'::jsonb;
+begin
+  ------------------------------------------------------------------
+  -- LOAD PO AND VALIDATE COPACK
+  ------------------------------------------------------------------
+  select *
+  into v_po
+  from public.purchase_orders
+  where id = p_po_id;
+
+  if not found then
+    raise exception 'Copack PO % not found', p_po_id;
+  end if;
+
+  if v_po.po_type != 'copack' then
+    return jsonb_build_object('skipped', true, 'reason', 'not a copack po');
+  end if;
+
+  if v_po.operation_supplies_materials is distinct from true then
+    return jsonb_build_object('skipped', true, 'reason', 'operation_supplies_materials = false');
+  end if;
+
+  ------------------------------------------------------------------
+  -- LOOP COPACK PO LINES
+  ------------------------------------------------------------------
+  for v_line in
+    select * from public.purchase_order_lines
+    where purchase_order_id = p_po_id
+  loop
+    v_any_shortage := false;
+
+    ----------------------------------------------------------------
+    -- LOOP BOM ITEMS
+    ----------------------------------------------------------------
+    for v_item in
+      select fi.*
+      from formulas f
+      join formula_items fi on fi.formula_id = f.id
+      where f.product_id = v_line.product_id
+    loop
+
+      v_required := fi.qty_per_unit * v_line.quantity;
+
+      select coalesce(v.net_available, 0)
+      into v_available
+      from v_material_net_stock v
+      where v.item_name = v_item.item_name;
+
+      if v_available < v_required then
+        v_shortage := v_required - v_available;
+        v_any_shortage := true;
+
+        ------------------------------------------------------------
+        -- OPERATION MATERIAL SHORTAGE → REAL PR
+        ------------------------------------------------------------
+        if v_item.ownership = 'operation' then
+          insert into purchase_requisitions (
+            item_type,
+            item_name,
+            required_qty,
+            needed_by,
+            source,
+            status,
+            notes,
+            po_id,
+            is_client_material
+          )
+          values (
+            v_item.item_type,
+            v_item.item_name,
+            v_shortage,
+            current_date,
+            'copack_operation_shortage',
+            'Open',
+            'Copack shortage OP material',
+            p_po_id,
+            false
+          );
+
+        ------------------------------------------------------------
+        -- CLIENT MATERIAL SHORTAGE → TRACKING PR
+        ------------------------------------------------------------
+        else
+          insert into purchase_requisitions (
+            item_type,
+            item_name,
+            required_qty,
+            needed_by,
+            source,
+            status,
+            notes,
+            po_id,
+            is_client_material
+          )
+          values (
+            'client_material',
+            v_item.item_name,
+            v_shortage,
+            current_date,
+            'copack_client_shortage',
+            'Open',
+            'Client must supply this material',
+            p_po_id,
+            true
+          );
+        end if;
+
+      end if;
+
+    end loop; -- BOM
+
+    ----------------------------------------------------------------
+    -- UPDATE LINE STATUS
+    ----------------------------------------------------------------
+    if v_any_shortage then
+      update purchase_order_lines
+      set status = 'backordered'
+      where id = v_line.id;
+
+      v_result := v_result || jsonb_build_object(
+        'line_id', v_line.id,
+        'status', 'backordered'
+      );
+
+    else
+      update purchase_order_lines
+      set status = 'ready_for_allocation'
+      where id = v_line.id;
+
+      v_result := v_result || jsonb_build_object(
+        'line_id', v_line.id,
+        'status', 'ready_for_allocation'
+      );
+    end if;
+
+  end loop;
+
+  return jsonb_build_object(
+    'po_id', p_po_id,
+    'results', v_result
+  );
+
+end;
+$function$
+"
+fn_copack_po_on_approve,"CREATE OR REPLACE FUNCTION public.fn_copack_po_on_approve()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_result jsonb;
+BEGIN
+    IF NEW.status = 'approved'
+       AND COALESCE(NEW.is_copack, false) = true
+       AND OLD.status IS DISTINCT FROM 'approved'
+    THEN
+        -- Dual-mode allocator
+        SELECT public.fn_allocate_copack_dual_pr(NEW.id)
+        INTO v_result;
+
+        RAISE NOTICE 'Copack PO allocator executed: %', v_result;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_create_batch_shortage_pr,"CREATE OR REPLACE FUNCTION public.fn_create_batch_shortage_pr(p_batch_id uuid, p_material_name text, p_required numeric, p_available numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_shortage numeric;
+    v_needed_by date := (current_date + INTERVAL '3 days');
+    v_notes text;
+    v_new_id uuid;
+BEGIN
+    -- Compute shortage
+    v_shortage := p_required - p_available;
+
+    IF v_shortage <= 0 THEN
+        RETURN jsonb_build_object(
+            'status', 'no_shortage',
+            'message', 'No shortage detected'
+        );
+    END IF;
+
+    -- Notes
+    v_notes := format(
+        'Shortage for %s (batch %s). Required=%s, Available=%s, Short=%s',
+        p_material_name,
+        p_batch_id,
+        p_required,
+        p_available,
+        v_shortage
+    );
+
+    -- Insert PR linked to the batch_id
+    INSERT INTO public.purchase_requisitions (
+        item_type,
+        item_name,
+        required_qty,
+        needed_by,
+        source,
+        status,
+        notes,
+        batch_id
+    )
+    VALUES (
+        'Raw Material',
+        p_material_name,
+        v_shortage,
+        v_needed_by,
+        'Auto PR from reserve_for_batch',
+        'Open',
+        v_notes,
+        p_batch_id
+    )
+    RETURNING id INTO v_new_id;
+
+    RETURN jsonb_build_object(
+        'status', 'success',
+        'message', 'Batch shortage PR created',
+        'batch_id', p_batch_id,
+        'pr_id', v_new_id,
+        'material', p_material_name,
+        'shortage', v_shortage
+    );
+END;
+$function$
+"
+fn_create_pr_for_po_shortfall,"CREATE OR REPLACE FUNCTION public.fn_create_pr_for_po_shortfall(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  r record;
+  v_count int := 0;
+  v_items jsonb := '[]'::jsonb;
+begin
+  for r in
+    select 
+      id,
+      product_name,
+      shortfall_qty
+    from public.purchase_order_lines
+    where purchase_order_id = p_po_id
+      and shortfall_qty > 0
+  loop
+    v_count := v_count + 1;
+
+    insert into public.purchase_requisitions (
+      id,
+      created_at,
+      item_type,
+      item_name,
+      required_qty,
+      needed_by,
+      source,
+      status,
+      notes
+    ) values (
+      gen_random_uuid(),
+      now(),
+      'Finished Goods',
+      r.product_name,
+      r.shortfall_qty,
+      (now() + interval '5 days')::date,
+      'PO Shortfall',
+      'Open',
+      format('Auto PR for PO %s (line %s)', p_po_id, r.id)
+    );
+
+    v_items := v_items || jsonb_build_object(
+      'line_id', r.id,
+      'product_name', r.product_name,
+      'shortfall_qty', r.shortfall_qty
+    );
+  end loop;
+
+  return jsonb_build_object(
+    'status','success',
+    'created_count', v_count,
+    'details', v_items
+  );
+end;
+$function$
+"
+fn_generate_po_for_batch_shortages,"CREATE OR REPLACE FUNCTION public.fn_generate_po_for_batch_shortages(p_batch_id uuid)
+ RETURNS TABLE(po_id uuid)
+ LANGUAGE plpgsql
+AS $function$
+declare rec record;
+begin
+  -- build shortages snapshot
+  create temporary table _short as
+  select
+    c.material_id,
+    c.material_name,
+    coalesce(im.supplier_id, null) as supplier_id,
+    c.uom,
+    c.shortage_qty
+  from fn_requirements_for_batch(p_batch_id) c
+  join inventory_materials im on im.id = c.material_id
+  where c.shortage_qty > 0;
+
+  -- if none, just return
+  if not exists(select 1 from _short) then
+    return;
+  end if;
+
+  -- one PO per supplier (null supplier grouped into one)
+  for rec in
+    select coalesce(supplier_id, '00000000-0000-0000-0000-000000000000'::uuid) as sup
+    from _short group by coalesce(supplier_id, '00000000-0000-0000-0000-000000000000'::uuid)
+  loop
+    -- create the PO header
+    insert into purchase_orders (supplier_id, status, created_at)
+    values (nullif(rec.sup, '00000000-0000-0000-0000-000000000000'::uuid), 'Draft', now())
+    returning id into po_id;
+
+    -- lines
+    insert into purchase_order_items(po_id, material_id, qty, uom)
+    select po_id, material_id, shortage_qty, uom
+    from _short
+    where coalesce(supplier_id, '00000000-0000-0000-0000-000000000000'::uuid) = rec.sup;
+
+    -- link reservations to PO (optional)
+    insert into inventory_reservations(batch_id, material_id, qty, status, po_id)
+    select p_batch_id, material_id, shortage_qty, 'active', po_id
+    from _short
+    where coalesce(supplier_id, '00000000-0000-0000-0000-000000000000'::uuid) = rec.sup;
+
+    return next; -- returns each created po_id
+  end loop;
+
+  drop table if exists _short;
+end;
+$function$
+"
+fn_generate_pr_for_po_shortages,"CREATE OR REPLACE FUNCTION public.fn_generate_pr_for_po_shortages(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  v_batch record;
+  v_created int := 0;
+begin
+  --------------------------------------------------------------------------
+  -- Idea:
+  -- 1) Find all batches linked to this PO
+  -- 2) Look at production_requirements for those batches where
+  --    required > available (via v_material_net_stock view if you have one,
+  --    or inventory_materials.total_available)
+  -- 3) Insert PRs for the shortage amounts.
+  --
+  -- ⚠️ This is just a scaffold. Since your fn_reserve_for_batch already
+  --     creates PRs, use this only if you want an extra summarizing step.
+  --------------------------------------------------------------------------
+
+  for v_batch in
+    select id
+    from public.production_batches
+    where po_id = p_po_id
+  loop
+    -- You could call your existing reserve function and let it create PRs.
+    perform public.fn_reserve_for_batch(v_batch.id);
+    v_created := v_created + 1;
+  end loop;
+
+  return jsonb_build_object(
+    'status',               'success',
+    'batches_processed',    v_created,
+    'note', 'Purchase requisitions are created inside fn_reserve_for_batch'
+  );
+end;
+$function$
+"
+fn_generate_pr_for_po_shortfall,"CREATE OR REPLACE FUNCTION public.fn_generate_pr_for_po_shortfall(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_po              purchase_orders%ROWTYPE;
+  v_formula_id      uuid;
+  v_total_shortfall numeric;
+  r                 record;
+  v_short           numeric;
+  v_created_count   int := 0;
+BEGIN
+  ------------------------------------------------------------------
+  -- 1️⃣ Load PO + basic validation
+  ------------------------------------------------------------------
+  SELECT *
+  INTO v_po
+  FROM purchase_orders
+  WHERE id = p_po_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'status', 'error',
+      'message', 'PO not found'
+    );
+  END IF;
+
+  -- No backorder qty? Then nothing to do.
+  IF COALESCE(v_po.backorder_qty, 0) <= 0 THEN
+    RETURN jsonb_build_object(
+      'status', 'no_backorder',
+      'message', 'PO has no backorder quantity'
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 2️⃣ Get latest formula for this product
+  ------------------------------------------------------------------
+  SELECT f.id
+  INTO v_formula_id
+  FROM formulas f
+  WHERE f.product_id = v_po.product_id
+  ORDER BY f.version DESC NULLS LAST, f.created_at DESC NULLS LAST
+  LIMIT 1;
+
+  IF v_formula_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'status', 'no_formula',
+      'message', 'No formula found for this product',
+      'product_id', v_po.product_id
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 3️⃣ Compute TOTAL shortfall across PO lines
+  ------------------------------------------------------------------
+  SELECT COALESCE(SUM(shortfall_qty), 0)
+  INTO v_total_shortfall
+  FROM purchase_order_lines
+  WHERE purchase_order_id = p_po_id
+    AND COALESCE(shortfall_qty, 0) > 0;
+
+  IF v_total_shortfall <= 0 THEN
+    RETURN jsonb_build_object(
+      'status', 'no_shortfall_lines',
+      'message', 'No PO line has shortfall_qty > 0'
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 4️⃣ Loop BOM and compare vs raw material inventory
+  ------------------------------------------------------------------
+  FOR r IN
+    SELECT
+      fi.material_id,
+      im.product_name AS material_name,
+      (COALESCE(fi.qty_per_unit, 0) * v_total_shortfall)::numeric AS required_qty,
+      COALESCE(im.total_available, 0)::numeric AS available_qty
+    FROM formula_items fi
+    JOIN inventory_materials im
+      ON im.id = fi.material_id
+    WHERE fi.formula_id = v_formula_id
+  LOOP
+    -- shortage?
+    IF r.required_qty > r.available_qty THEN
+      v_short := r.required_qty - r.available_qty;
+
+      ----------------------------------------------------------------
+      -- 5️⃣ Avoid duplicate PRs for same PO + material
+      ----------------------------------------------------------------
+      IF NOT EXISTS (
+        SELECT 1
+        FROM purchase_requisitions pr
+        WHERE pr.item_type = 'Raw Material'
+          AND pr.item_name = r.material_name
+          AND pr.status = 'Open'
+          AND pr.source = 'Auto PR from PO Shortfall'
+          AND pr.notes ILIKE '%' || p_po_id::text || '%'
+      ) THEN
+
+        INSERT INTO purchase_requisitions (
+          id,
+          created_at,
+          item_type,
+          item_name,
+          required_qty,
+          needed_by,
+          source,
+          status,
+          notes
+        ) VALUES (
+          gen_random_uuid(),
+          now(),
+          'Raw Material',
+          r.material_name,
+          v_short,
+          (now() + interval '7 days')::date,
+          'Auto PR from PO Shortfall',
+          'Open',
+          format(
+            'Shortage of %s units for %s (PO %s)',
+            v_short,
+            r.material_name,
+            p_po_id
+          )
+        );
+
+        v_created_count := v_created_count + 1;
+      END IF;
+    END IF;
+  END LOOP;
+
+  ------------------------------------------------------------------
+  -- 6️⃣ Return summary
+  ------------------------------------------------------------------
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'po_id', p_po_id,
+    'backorder_qty', v_po.backorder_qty,
+    'total_shortfall', v_total_shortfall,
+    'pr_created', v_created_count
+  );
+END;
+$function$
+"
+fn_generate_pr_on_rm_shortage,"CREATE OR REPLACE FUNCTION public.fn_generate_pr_on_rm_shortage(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    req record;
+    v_short numeric;
+BEGIN
+    -- Loop through all required materials
+    FOR req IN
+        SELECT 
+            r.material_name,
+            r.required_qty,
+            COALESCE(m.total_available - m.reserved_qty, 0) AS net_available
+        FROM production_requirements r
+        LEFT JOIN v_material_net_stock m
+            ON m.material_name = r.material_name
+        WHERE r.batch_id = p_batch_id
+    LOOP
+        v_short := req.required_qty - req.net_available;
+
+        IF v_short > 0 THEN
+            INSERT INTO purchase_requisitions(
+                id, created_at, item_type, item_name,
+                required_qty, needed_by, source, status, notes
+            ) VALUES(
+                gen_random_uuid(),
+                now(),
+                'Raw Material',
+                req.material_name,
+                v_short,
+                now() + interval '3 days',
+                'Auto from Production Shortage',
+                'Open',
+                format('Shortfall %s units for Batch %s', v_short, p_batch_id)
+            );
+        END IF;
+
+    END LOOP;
+
+END;
+$function$
+"
+fn_generate_requirements_for_batch,"CREATE OR REPLACE FUNCTION public.fn_generate_requirements_for_batch(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_formula_id uuid;
+  v_qty numeric;
+  v_yield numeric;
+  v_scrap numeric;
+
+  r record;
+  v_required numeric;
+  v_gross numeric;
+BEGIN
+  --------------------------------------------------------------------
+  -- 1️⃣ Get formula + quantity + yield + scrap
+  --------------------------------------------------------------------
+  SELECT
+    formula_id,
+    qty,
+    COALESCE(f.standard_yield, 1.0) AS standard_yield,
+    COALESCE(f.scrap_percent, 0.0)  AS scrap_percent
+  INTO
+    v_formula_id,
+    v_qty,
+    v_yield,
+    v_scrap
+  FROM public.production_batches pb
+  LEFT JOIN public.formulas f ON pb.formula_id = f.id
+  WHERE pb.id = p_batch_id;
+
+  IF v_formula_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'status','error',
+      'message','Batch has no formula assigned'
+    );
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 2️⃣ Clear old requirements
+  --------------------------------------------------------------------
+  DELETE FROM public.production_requirements
+  WHERE batch_id = p_batch_id;
+
+  --------------------------------------------------------------------
+  -- 3️⃣ Insert BOM explosion with yield + scrap
+  --------------------------------------------------------------------
+  FOR r IN
+    SELECT
+      fi.material_id,
+      fi.uom,
+      COALESCE(fi.qty_per_unit, 0) AS qty_per_unit
+    FROM public.formula_items fi
+    WHERE fi.formula_id = v_formula_id
+  LOOP
+
+    -- Base requirement: unit * batch qty
+    v_required := r.qty_per_unit * v_qty;
+
+    -- Apply yield: output / yield%
+    -- ex: 100 units / 0.95 = 105.26
+    IF v_yield > 0 THEN
+      v_gross := v_required / v_yield;
+    ELSE
+      v_gross := v_required;
+    END IF;
+
+    -- Apply scrap: 5% → multiply
+    -- final = gross_required * (1 + scrap%)
+    v_required := v_gross * (1 + v_scrap);
+
+    INSERT INTO public.production_requirements (
+      id,
+      batch_id,
+      material_id,
+      qty_required,
+      uom,
+      reserved_qty,
+      created_at
+    ) VALUES (
+      gen_random_uuid(),
+      p_batch_id,
+      r.material_id,
+      v_required,     -- final requirement WITH yield + scrap
+      r.uom,
+      0,
+      now()
+    );
+
+  END LOOP;
+
+  --------------------------------------------------------------------
+  -- 4️⃣ Done
+  --------------------------------------------------------------------
+  RETURN jsonb_build_object(
+    'status','success',
+    'message','Material requirements generated (with yield & scrap)',
+    'batch_id', p_batch_id
+  );
+
+END;
+$function$
+"
+fn_generate_requirements_for_batch_dual,"CREATE OR REPLACE FUNCTION public.fn_generate_requirements_for_batch_dual(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_batch      public.production_batches%ROWTYPE;
+    v_po         public.purchase_orders%ROWTYPE;
+    v_formula    public.formulas%ROWTYPE;
+    v_item       public.formula_items%ROWTYPE;
+    v_mat        public.inventory_materials%ROWTYPE;
+
+    v_required   numeric;
+    v_results    jsonb := '[]'::jsonb;
+BEGIN
+    -------------------------------------------------------------------
+    -- 1. Load batch
+    -------------------------------------------------------------------
+    SELECT * INTO v_batch
+    FROM public.production_batches
+    WHERE id = p_batch_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','Batch not found');
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 2. Load PO so we know: client or ops supplies materials?
+    -------------------------------------------------------------------
+    SELECT * INTO v_po
+    FROM public.purchase_orders
+    WHERE id = v_batch.source_po_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','PO not found');
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 3. Load formula
+    -------------------------------------------------------------------
+    SELECT * INTO v_formula
+    FROM public.formulas
+    WHERE id = v_batch.formula_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('status','error','message','Formula not found');
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 4. Loop formula items
+    -------------------------------------------------------------------
+    FOR v_item IN
+        SELECT * FROM public.formula_items
+        WHERE formula_id = v_formula.id
+    LOOP
+        SELECT * INTO v_mat
+        FROM public.inventory_materials
+        WHERE id = v_item.material_id;
+
+        IF NOT FOUND THEN CONTINUE; END IF;
+
+        -------------------------------------------------------------------
+        -- 4A. FILTER MATERIALS BASED ON PO MODE
+        -------------------------------------------------------------------
+        IF v_po.client_materials_required = TRUE
+           AND v_mat.is_client_supplied = TRUE
+        THEN
+            -- include client supply
+            NULL;
+
+        ELSIF v_po.operation_supplies_materials = TRUE
+           AND v_mat.is_client_supplied = FALSE
+        THEN
+            -- include ops supply
+            NULL;
+
+        ELSE
+            -- skip materials not involved in this PO
+            CONTINUE;
+        END IF;
+
+        -------------------------------------------------------------------
+        -- 4B. Compute Required Qty
+        -------------------------------------------------------------------
+        v_required := COALESCE(v_item.qty_per_unit,0) * COALESCE(v_batch.qty,0);
+
+        -------------------------------------------------------------------
+        -- 4C. Create Requirement
+        -------------------------------------------------------------------
+        INSERT INTO public.production_requirements (
+            batch_id,
+            material_id,
+            qty_required,
+            uom
+        )
+        VALUES (
+            p_batch_id,
+            v_mat.id,
+            v_required,
+            v_item.uom
+        );
+
+        v_results := v_results || jsonb_build_array(
+            jsonb_build_object(
+                'material', v_mat.product_name,
+                'required', v_required,
+                'uom', v_item.uom
+            )
+        );
+    END LOOP;
+
+    RETURN jsonb_build_object(
+        'status','requirements_created',
+        'batch_id', p_batch_id,
+        'items', v_results
+    );
+END;
+$function$
+"
+fn_generate_requirements_for_po_batch,"CREATE OR REPLACE FUNCTION public.fn_generate_requirements_for_po_batch(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_formula_id uuid;
+    v_qty numeric;
+    r record;
+BEGIN
+    -------------------------------------------------------------------
+    -- 1. Get batch information
+    -------------------------------------------------------------------
+    SELECT formula_id, qty
+    INTO v_formula_id, v_qty
+    FROM production_batches
+    WHERE id = p_batch_id;
+
+    IF v_formula_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'status','error',
+            'message','Batch has no formula assigned.'
+        );
+    END IF;
+
+    -------------------------------------------------------------------
+    -- 2. Remove previous requirements (clean rebuild)
+    -------------------------------------------------------------------
+    DELETE FROM production_requirements
+    WHERE batch_id = p_batch_id;
+
+    -------------------------------------------------------------------
+    -- 3. Insert requirements from formula_items
+    -------------------------------------------------------------------
+    FOR r IN
+        SELECT 
+            fi.material_id,
+            fi.qty_per_unit,
+            fi.uom
+        FROM formula_items fi
+        WHERE fi.formula_id = v_formula_id
+    LOOP
+        INSERT INTO production_requirements (
+            id,
+            batch_id,
+            material_id,
+            qty_required,
+            uom,
+            reserved_qty,
+            created_at
+        )
+        VALUES (
+            gen_random_uuid(),
+            p_batch_id,
+            r.material_id,
+            COALESCE(r.qty_per_unit, 0) * v_qty,
+            r.uom,
+            0,
+            NOW()
+        );
+    END LOOP;
+
+    -------------------------------------------------------------------
+    -- 4. Return success
+    -------------------------------------------------------------------
+    RETURN jsonb_build_object(
+        'status','success',
+        'message','Requirements generated for PO batch.',
+        'batch_id', p_batch_id
+    );
+
+END;
+$function$
+"
+fn_on_batch_start_to_wip,"CREATE OR REPLACE FUNCTION public.fn_on_batch_start_to_wip()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Fire only when status changes TO ""In Progress""
+    IF NEW.status = 'In Progress'
+       AND (OLD.status IS DISTINCT FROM NEW.status) THEN
+        -- Ito na yung actual movement: bawas sa inventory, lipat sa WIP
+        PERFORM public.consume_materials_for_batch(NEW.id);
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_on_production_reserve,"CREATE OR REPLACE FUNCTION public.fn_on_production_reserve()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- Only apply when production reservation
+  IF NEW.bucket = 'production' THEN
+    UPDATE public.inventory_materials
+    SET reserved_qty = reserved_qty + NEW.qty
+    WHERE id = NEW.material_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+fn_po_allocation_summary,"CREATE OR REPLACE FUNCTION public.fn_po_allocation_summary(p_po_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  r record;
+  v_items jsonb := '[]'::jsonb;
+  v_status text;
+begin
+  for r in
+    select 
+      id,
+      product_name,
+      quantity,
+      allocated_qty,
+      shortfall_qty,
+      status
+    from public.purchase_order_lines
+    where purchase_order_id = p_po_id
+  loop
+    v_items := v_items || jsonb_build_object(
+      'line_id', r.id,
+      'product_name', r.product_name,
+      'quantity', r.quantity,
+      'allocated_qty', r.allocated_qty,
+      'shortfall_qty', r.shortfall_qty,
+      'line_status', r.status
+    );
+  end loop;
+
+  select status into v_status
+  from public.purchase_orders
+  where id = p_po_id;
+
+  return jsonb_build_object(
+    'po_id', p_po_id,
+    'status', v_status,
+    'items', v_items
+  );
+end;
+$function$
+"
+fn_po_backorder_to_batch,"CREATE OR REPLACE FUNCTION public.fn_po_backorder_to_batch()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF NEW.status = 'backordered'
+       AND OLD.status IS DISTINCT FROM 'backordered'
+    THEN
+        PERFORM public.fn_auto_create_batches_for_po(NEW.id);
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_po_credit_gate,"CREATE OR REPLACE FUNCTION public.fn_po_credit_gate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_credit_hold BOOLEAN := FALSE;
+  v_overdue NUMERIC := 0;
+BEGIN
+  IF NEW.customer_id IS NOT NULL THEN
+    SELECT COALESCE(c.credit_hold, FALSE),
+           COALESCE(c.overdue_balance, 0)
+      INTO v_credit_hold, v_overdue
+    FROM public.customers c
+    WHERE c.id = NEW.customer_id;
+
+    IF v_credit_hold OR v_overdue > 0 THEN
+      NEW.status := 'On Hold';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+fn_post_scrap_capa,"CREATE OR REPLACE FUNCTION public.fn_post_scrap_capa(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare
+  v_batch production_batches%rowtype;
+  v_scrap numeric;
+  v_percent numeric;
+begin
+  select * into v_batch
+  from production_batches
+  where id = p_batch_id;
+
+  if not found then
+    return jsonb_build_object('status','error','message','Batch not found');
+  end if;
+
+  v_scrap := coalesce(v_batch.scrap_qty,0);
+  v_percent := coalesce(v_batch.scrap_percent,0);
+
+  -- 🛑 Scrap tolerance check
+  if v_percent <= v_batch.scrap_tolerance then
+    return jsonb_build_object(
+      'status','ok',
+      'message','Scrap within tolerance'
+    );
+  end if;
+
+  -- ⚠ Create CAPA Task
+  insert into capa_tasks(
+    batch_id, product_sku, scrap_qty, scrap_percent, tolerance
+  ) values (
+    v_batch.id,
+    v_batch.product_sku,
+    v_scrap,
+    v_percent,
+    v_batch.scrap_tolerance
+  );
+
+  -- 🔔 Notify QA + Ops via Notification Table
+  insert into production_alerts(type, message, meta)
+  values (
+    'SCRAP_EXCEEDED',
+    'Scrap exceeded tolerance for batch ' || v_batch.id,
+    jsonb_build_object(
+      'batch_id', v_batch.id,
+      'product_sku', v_batch.product_sku,
+      'scrap_qty', v_scrap,
+      'scrap_percent', v_percent
+    )
+  );
+
+  return jsonb_build_object(
+    'status','capa_created',
+    'scrap_percent', v_percent
+  );
+
+end;
+$function$
+"
+fn_post_yield_variance,"CREATE OR REPLACE FUNCTION public.fn_post_yield_variance(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_planned numeric;
+  v_actual numeric;
+  v_standard_yield numeric;
+  v_actual_yield numeric;
+  v_variance numeric;
+  v_threshold numeric := 0.05; -- 5% default
+BEGIN
+  -- Get planned qty, actual qty, standard yield
+  SELECT 
+    b.qty,
+    b.completed_qty,
+    f.standard_yield
+  INTO 
+    v_planned,
+    v_actual,
+    v_standard_yield
+  FROM production_batches b
+  LEFT JOIN formulas f ON f.id = b.formula_id
+  WHERE b.id = p_batch_id;
+
+  -- Safety check
+  IF v_actual IS NULL OR v_actual = 0 THEN
+    RETURN jsonb_build_object('status','skipped','message','No actual output yet.');
+  END IF;
+
+  -- Compute actual yield
+  v_actual_yield := v_actual / v_planned;
+
+  -- Compute variance
+  v_variance := (v_standard_yield - v_actual_yield);
+
+  -- Insert variance record
+  INSERT INTO production_variances (
+    batch_id,
+    planned_qty,
+    actual_qty,
+    standard_yield,
+    actual_yield,
+    variance_percent,
+    threshold,
+    needs_review
+  ) VALUES (
+    p_batch_id,
+    v_planned,
+    v_actual,
+    v_standard_yield,
+    v_actual_yield,
+    v_variance,
+    v_threshold,
+    (v_variance > v_threshold)
+  );
+
+  RETURN jsonb_build_object(
+    'status','success',
+    'planned_qty', v_planned,
+    'actual_qty', v_actual,
+    'actual_yield', v_actual_yield,
+    'standard_yield', v_standard_yield,
+    'variance_percent', v_variance,
+    'review_required', (v_variance > v_threshold)
+  );
+END;
+$function$
+"
+fn_regenerate_requirements_if_formula_set,"CREATE OR REPLACE FUNCTION public.fn_regenerate_requirements_if_formula_set()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    req_count int;
+BEGIN
+    -- If formula_id was NULL before and is now set
+    IF (OLD.formula_id IS NULL AND NEW.formula_id IS NOT NULL) THEN
+
+        -- Delete any existing (possibly empty or wrong) requirements
+        DELETE FROM production_requirements
+        WHERE batch_id = NEW.id;
+
+        -- Generate new requirements
+        PERFORM fn_generate_requirements_for_batch(NEW.id);
+
+        RAISE NOTICE 'Requirements generated for batch % because formula was updated.', NEW.id;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_release_reservations,"CREATE OR REPLACE FUNCTION public.fn_release_reservations(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+declare r record;
+begin
+  for r in
+    select material_id, qty from inventory_reservations
+    where batch_id = p_batch_id and status='active'
+  loop
+    update inventory_reservations
+      set status='released'
+    where batch_id=p_batch_id and material_id=r.material_id and status='active';
+
+    insert into material_transactions(material_id, qty_change, reason, ref_table, ref_id)
+    values (r.material_id, r.qty, 'RELEASE', 'production_batches', p_batch_id);
+  end loop;
+
+  update production_batches
+  set status = 'Scheduled'
+  where id = p_batch_id;
+end;
+$function$
+"
+fn_requirements_for_batch,"CREATE OR REPLACE FUNCTION public.fn_requirements_for_batch(p_batch_id uuid)
+ RETURNS TABLE(material_id uuid, material_name text, uom text, per_unit_qty numeric, required_qty numeric, current_stock numeric, reserved_qty numeric, net_available numeric, shortage_qty numeric)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select *
+  from fn_calc_requirements(
+    (select formula_id from production_batches where id = p_batch_id),
+    (select qty from production_batches where id = p_batch_id)
+  );
+$function$
+"
+fn_reserve_for_batch,"CREATE OR REPLACE FUNCTION public.fn_reserve_for_batch(p_batch_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    req RECORD;
+    avail numeric;
+    shortage numeric;
+    shortages jsonb := '[]'::jsonb;
+BEGIN
+    ------------------------------------------------------------------
+    -- 1. Validate batch exists
+    ------------------------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM public.production_batches 
+        WHERE id = p_batch_id
+    ) THEN
+        RETURN jsonb_build_object(
+            'status','error',
+            'message','Batch not found'
+        );
+    END IF;
+
+
+    ------------------------------------------------------------------
+    -- 2. Loop required materials
+    ------------------------------------------------------------------
+    FOR req IN
+        SELECT 
+            pr.material_id,
+            pr.qty_required,
+            im.product_name AS material_name,
+            (COALESCE(im.total_available,0) - COALESCE(im.reserved_qty,0)) AS net_available,
+            im.sku
+        FROM public.production_requirements pr
+        JOIN public.inventory_materials im 
+            ON im.id = pr.material_id
+        WHERE pr.batch_id = p_batch_id      -- CORRECT
+    LOOP
+        avail := req.net_available;
+
+        IF avail < req.qty_required THEN
+            shortage := req.qty_required - avail;
+
+            shortages := shortages || jsonb_build_array(
+                jsonb_build_object(
+                    'material_id', req.material_id,
+                    'material_name', req.material_name,
+                    'required', req.qty_required,
+                    'available', avail,
+                    'shortage', shortage
+                )
+            );
+        END IF;
+    END LOOP;
+
+
+    ------------------------------------------------------------------
+    -- 3. IF SHORTFALL → Create PRs and stop
+    ------------------------------------------------------------------
+    IF jsonb_array_length(shortages) > 0 THEN
+
+        INSERT INTO public.purchase_requisitions
+            (item_type, item_name, required_qty, needed_by, source, status, notes, batch_id)
+        SELECT
+            'raw_material',
+            s->>'material_name',
+            (s->>'shortage')::numeric,
+            CURRENT_DATE + INTERVAL '3 days',
+            'Auto PR from reserve_for_batch',
+            'Open',
+            'Shortfall: '||(s->>'material_name')||
+            ' missing '||(s->>'shortage')||
+            ' units for Batch '||p_batch_id,
+            p_batch_id
+        FROM jsonb_array_elements(shortages) AS s;
+
+        RETURN jsonb_build_object(
+            'status','error',
+            'message','Shortages detected. Reservation not completed.',
+            'shortages', shortages
+        );
+    END IF;
+
+
+    ------------------------------------------------------------------
+    -- 4. NO Shortfall → Reserve Materials
+    ------------------------------------------------------------------
+
+    -- 4A. update requirements
+    UPDATE public.production_requirements
+    SET reserved_qty = qty_required
+    WHERE batch_id = p_batch_id;
+
+    -- 4B. update inventory reserved qty
+    UPDATE public.inventory_materials im
+    SET reserved_qty = im.reserved_qty + pr.qty_required
+    FROM public.production_requirements pr
+    WHERE pr.material_id = im.id
+      AND pr.batch_id = p_batch_id;
+
+    -- 4C. Insert reservations
+    INSERT INTO public.inventory_reservations(
+        batch_id,
+        material_id,
+        product_name,
+        qty,
+        bucket,
+        sku,
+        status,
+        is_consumed
+    )
+    SELECT
+        p_batch_id,
+        pr.material_id,
+        im.product_name,
+        pr.qty_required,
+        'batch',
+        im.sku,
+        'active',
+        FALSE
+    FROM public.production_requirements pr
+    JOIN public.inventory_materials im 
+        ON im.id = pr.material_id
+    WHERE pr.batch_id = p_batch_id;
+
+
+    ------------------------------------------------------------------
+    -- 5. Update batch → In Progress
+    ------------------------------------------------------------------
+    UPDATE public.production_batches
+    SET status = 'In Progress'
+    WHERE id = p_batch_id;
+
+    RETURN jsonb_build_object(
+        'status','success',
+        'message','Materials reserved successfully'
+    );
+END;
+$function$
+"
+fn_trigger_copack_client_pr,"CREATE OR REPLACE FUNCTION public.fn_trigger_copack_client_pr()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_result jsonb;
+BEGIN
+    -- Only fire when PO is approved and wasn't approved before
+    IF TG_OP = 'UPDATE'
+       AND NEW.status = 'approved'
+       AND OLD.status IS DISTINCT FROM 'approved'
+       AND NEW.is_copack = true
+       AND NEW.client_materials_required = true
+    THEN
+        -- Run the dual PR allocator
+        SELECT public.fn_allocate_copack_dual_pr(NEW.id)
+        INTO v_result;
+
+        RAISE NOTICE 'Copack PR Trigger Fired: %', v_result;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_trigger_copack_dual_pr,"CREATE OR REPLACE FUNCTION public.fn_trigger_copack_dual_pr()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_result jsonb;
+BEGIN
+    -- Make sure we only fire when:
+    -- 1) Status changed to approved
+    -- 2) Not previously approved
+    -- 3) This is a copack PO
+    -- 4) Client materials are required
+    IF TG_OP = 'UPDATE'
+       AND NEW.status = 'approved'
+       AND OLD.status IS DISTINCT FROM 'approved'
+       AND COALESCE(NEW.is_copack, false) = true
+       AND COALESCE(NEW.client_materials_required, false) = true
+    THEN
+        -- Call your dual PR allocator
+        SELECT public.fn_allocate_copack_dual_pr(NEW.id)
+        INTO v_result;
+
+        RAISE NOTICE 'Triggered fn_allocate_copack_dual_pr: %', v_result;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_validate_po_required_fields,"CREATE OR REPLACE FUNCTION public.fn_validate_po_required_fields()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  ------------------------------------------------------------
+  -- Required Head Fields
+  ------------------------------------------------------------
+  IF NEW.customer_id IS NULL THEN
+    RAISE EXCEPTION 'PO missing required field: customer_id';
+  END IF;
+
+  IF NEW.requested_ship_date IS NULL THEN
+    RAISE EXCEPTION 'PO missing required field: requested_ship_date';
+  END IF;
+
+  IF COALESCE(TRIM(NEW.location), '') = '' THEN
+    RAISE EXCEPTION 'PO missing required field: location';
+  END IF;
+
+  ------------------------------------------------------------
+  -- Rush Detection
+  -- Rush = requested_ship_date - today <= 3 days
+  ------------------------------------------------------------
+  IF NEW.requested_ship_date IS NOT NULL THEN
+    NEW.is_rush := (NEW.requested_ship_date - CURRENT_DATE) <= 3;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+release_batch_reservations,"CREATE OR REPLACE FUNCTION public.release_batch_reservations(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+declare
+  r record;
+begin
+  for r in 
+    select id, product_name, qty
+    from inventory_reservations
+    where batch_id = p_batch_id
+      and bucket = 'raw'
+  loop
+    update inventory_materials
+      set reserved_qty = greatest(reserved_qty - r.qty, 0)
+      where product_name = r.product_name;
+
+    delete from inventory_reservations where id = r.id;
+  end loop;
+end;
+$function$
+"
+release_po_reservations,"CREATE OR REPLACE FUNCTION public.release_po_reservations(p_po_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+declare
+  r record;
+begin
+  for r in 
+    select id, product_name, qty
+    from inventory_reservations
+    where po_id = p_po_id
+  loop
+    update inventory_materials
+      set reserved_qty = greatest((reserved_qty - r.qty),0)
+      where product_name = r.product_name;
+
+    delete from inventory_reservations where id = r.id;
+  end loop;
+end;
+$function$
+"
+reserve_for_batch,"CREATE OR REPLACE FUNCTION public.reserve_for_batch(p_batch_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+declare
+  r record;
+begin
+  for r in
+    select m.product_name, i.qty_per_unit * b.qty_goal as qty_needed
+    from production_requirements i
+    join inventory_materials m on m.id = i.material_id
+    join production_batches b on b.id = p_batch_id
+    where i.formula_id = b.formula_id
+  loop
+    insert into inventory_reservations(
+      batch_id,
+      product_name,
+      qty,
+      bucket
+    ) values (
+      p_batch_id,
+      r.product_name,
+      r.qty_needed,
+      'raw'
+    );
+
+    update inventory_materials
+        set reserved_qty = coalesce(reserved_qty,0) + r.qty_needed
+        where product_name = r.product_name;
+  end loop;
+end;
+$function$
+"
+trg_allocate_po_on_approve,"CREATE OR REPLACE FUNCTION public.trg_allocate_po_on_approve()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- RUN ONLY FOR BRAND POs
+  IF NEW.status = 'approved'
+     AND COALESCE(NEW.is_copack, false) = false THEN
+     
+     PERFORM public.allocate_brand_po_finished_first(NEW.id);
+
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_copack_po_auto_check,"CREATE OR REPLACE FUNCTION public.trg_copack_po_auto_check()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  IF NEW.status = 'approved'
+     AND NEW.is_copack = true
+     AND NEW.client_materials_required = false
+  THEN
+    perform fn_copack_material_check(NEW.id);
+  END IF;
+
+  return NEW;
+end;
+$function$
+"
+trg_fn_copack_batch_router,"CREATE OR REPLACE FUNCTION public.trg_fn_copack_batch_router()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Only trigger when COPACK & allocated
+    IF NEW.is_copack IS TRUE
+       AND NEW.status = 'allocated'
+    THEN
+        PERFORM public.fn_auto_create_copack_batch_universal(NEW.id);
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+trg_po_auto_allocate,"CREATE OR REPLACE FUNCTION public.trg_po_auto_allocate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  -- disabled: allocation is handled manually via RPC
+  return new;
+end;
+$function$
+"
+trg_po_shortfall_pr_trigger,"CREATE OR REPLACE FUNCTION public.trg_po_shortfall_pr_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- Only run when PO just became backordered
+  IF NEW.status = 'backordered' THEN
+    PERFORM public.fn_po_shortfall_pr(NEW.id);
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_po_shortfall_to_batch,"CREATE OR REPLACE FUNCTION public.trg_po_shortfall_to_batch()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- ONLY AUTO-CREATE BATCHES FOR BRAND PO
+    IF NEW.status = 'backordered'
+       AND COALESCE(NEW.is_copack,false) = false THEN
+       
+        PERFORM fn_auto_create_batches_for_po(NEW.id);
+
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+trg_release_po_reservations,"CREATE OR REPLACE FUNCTION public.trg_release_po_reservations()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  if NEW.status = 'canceled' and OLD.status <> 'canceled' then
+    perform release_po_reservations(NEW.id);
+  end if;
+  return NEW;
+end;
+$function$
+"
