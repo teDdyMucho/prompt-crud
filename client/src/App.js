@@ -60,7 +60,6 @@ function App() {
   const [uploadingTable, setUploadingTable] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [richTextSources, setRichTextSources] = useState([]);
   const [savingRichText, setSavingRichText] = useState(false);
   const [editingRichTextId, setEditingRichTextId] = useState(null);
 
@@ -217,8 +216,7 @@ function App() {
       const response = await fetch(url);
       if (response.ok) {
         const sources = await response.json();
-        setRichTextSources(sources);
-        // Also update the rtSaved state for backward compatibility
+        // Update the rtSaved state for backward compatibility
         setRtSaved(sources.map(source => ({
           id: source.id,
           name: source.name,
@@ -230,7 +228,6 @@ function App() {
       }
     } catch (error) {
       logError('RichText:fetch', error);
-      setRichTextSources([]);
       setRtSaved([]);
     }
   };
