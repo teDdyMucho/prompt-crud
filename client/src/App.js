@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // Determine API base URL
 // Priority: REACT_APP_API_BASE_URL -> (production) '/.netlify/functions/prompts' -> (dev) localhost
@@ -27,6 +27,62 @@ function App() {
   const [showEditKnowledgebaseModal, setShowEditKnowledgebaseModal] = useState(false);
   const [showEditInventoryModal, setShowEditInventoryModal] = useState(false);
   const [showEditPromptModal, setShowEditPromptModal] = useState(false);
+  const [kbTab, setKbTab] = useState('All');
+  const [crawlerMode, setCrawlerMode] = useState('Exact URL');
+  const [crawlerUrl, setCrawlerUrl] = useState('');
+  const [faqQ, setFaqQ] = useState('');
+  const [faqA, setFaqA] = useState('');
+  const [rtName, setRtName] = useState('');
+  const [rtBlock, setRtBlock] = useState('Paragraph');
+  const [rtFamily, setRtFamily] = useState('Inter');
+  const [rtSize, setRtSize] = useState('14px');
+  const [rtLine, setRtLine] = useState('1.5');
+  const [rtBold, setRtBold] = useState(false);
+  const [rtItalic, setRtItalic] = useState(false);
+  const [rtUnderline, setRtUnderline] = useState(false);
+  const [rtContent, setRtContent] = useState('');
+  const rtRef = useRef(null);
+  const [rtSaved, setRtSaved] = useState([]);
+  // Upload states for Tables and File Upload tabs
+  const [tableDragging, setTableDragging] = useState(false);
+  const [tableFiles, setTableFiles] = useState([]);
+  const tableInputRef = useRef(null);
+  const [fileDragging, setFileDragging] = useState(false);
+  const [fileUploadFiles, setFileUploadFiles] = useState([]);
+  const fileInputRef = useRef(null);
+
+  const updateInlineStates = () => {
+    try {
+      setRtBold(document.queryCommandState('bold'));
+      setRtItalic(document.queryCommandState('italic'));
+      setRtUnderline(document.queryCommandState('underline'));
+    } catch {}
+  };
+
+  // Drag and drop helpers
+  const handleDrop = (ev, type) => {
+    ev.preventDefault();
+    const items = Array.from(ev.dataTransfer.files || []);
+    if (type === 'table') {
+      const csvs = items.filter(f => f.name.toLowerCase().endsWith('.csv'));
+      setTableFiles(csvs);
+      setTableDragging(false);
+    } else if (type === 'files') {
+      const allowed = ['pdf','doc','docx'];
+      const picked = items.filter(f => allowed.includes(f.name.split('.').pop()?.toLowerCase()))
+        .slice(0, 10);
+      setFileUploadFiles(picked);
+      setFileDragging(false);
+    }
+  };
+
+  const exec = (cmd, arg = null) => {
+    try {
+      document.execCommand(cmd, false, arg);
+      updateInlineStates();
+      rtRef.current && rtRef.current.focus();
+    } catch {}
+  };
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -183,7 +239,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {/* Modern Header with Gradient */}
         <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/30 mb-10 overflow-hidden">
           <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-6 sm:px-10 py-6 sm:py-8">
@@ -374,7 +430,7 @@ function App() {
                 <table className="w-full table-auto">
                   <thead className="bg-gradient-to-r from-gray-50 via-slate-50 to-gray-100 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-auto">
+                      <th className="px-5 py-5 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-50">
                         <div className="flex items-center space-x-2">
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -383,7 +439,7 @@ function App() {
                         </div>
                       </th>
                       
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-24">
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-28">
                         <div className="flex items-center space-x-1">
                           <span>Location</span>
                         </div>
@@ -393,22 +449,22 @@ function App() {
                           <span>Business</span>
                         </div>
                       </th>
-                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-48">
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-56">
                         <div className="flex items-center space-x-1">
                           <span>Content</span>
                         </div>
                       </th>
-                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-40">
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-44">
                         <div className="flex items-center space-x-1">
                           <span>Knowledge</span>
                         </div>
                       </th>
-                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-32">
+                      <th className="px-2 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider hidden xl:table-cell w-36">
                         <div className="flex items-center space-x-1">
                           <span>Inventory</span>
                         </div>
                       </th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-32">
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider w-28">
                         <div className="flex items-center justify-center">
                           <span>Actions</span>
                         </div>
@@ -418,10 +474,10 @@ function App() {
                   <tbody className="bg-white divide-y divide-gray-100">
                     {filteredPrompts.map((prompt, index) => (
                       <tr key={prompt.id} className="group odd:bg-white even:bg-slate-50/50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 transition-all duration-200 border-b border-gray-100 last:border-0 h-16">
-                        <td className="px-4 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 whitespace-nowrap w-48">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-12 w-12">
-                              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
+                            <div className="flex-shrink-0 h-10 w-10">
+                              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
                                 <span className="text-white font-bold text-base">{prompt.name.charAt(0).toUpperCase()}</span>
                               </div>
                             </div>
@@ -439,7 +495,7 @@ function App() {
                           <span className="text-sm font-medium text-gray-900 truncate block w-32">{prompt.business_name}</span>
                         </td>
                         <td className="px-2 py-4 text-sm text-gray-700 w-48 hidden xl:table-cell">
-                          <div className="flex items-start space-x-1">
+                          <div className="flex items-center gap-2">
                             <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
                               {prompt.prompt}
                             </div>
@@ -448,7 +504,7 @@ function App() {
                                 setSelectedPrompt(prompt);
                                 setShowViewModal(true);
                               }}
-                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              className="inline-flex items-center justify-center flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
                               title="View full prompt"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -459,7 +515,7 @@ function App() {
                           </div>
                         </td>
                         <td className="px-2 py-4 text-sm text-gray-700 w-40 hidden xl:table-cell">
-                          <div className="flex items-start space-x-1">
+                          <div className="flex items-center gap-2">
                             <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
                               {prompt.knowledgebase}
                             </div>
@@ -468,7 +524,7 @@ function App() {
                                 setSelectedPrompt(prompt);
                                 setShowKnowledgebaseModal(true);
                               }}
-                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              className="inline-flex items-center justify-center flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
                               title="Enlarge knowledgebase"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -478,7 +534,7 @@ function App() {
                           </div>
                         </td>
                         <td className="px-2 py-4 text-sm text-gray-700 w-32 hidden xl:table-cell">
-                          <div className="flex items-start space-x-1">
+                          <div className="flex items-center gap-2">
                             <div className="line-clamp-2 leading-relaxed flex-1 text-xs">
                               {String(prompt.inventory)}
                             </div>
@@ -487,7 +543,7 @@ function App() {
                                 setSelectedPrompt(prompt);
                                 setShowInventoryModal(true);
                               }}
-                              className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                              className="inline-flex items-center justify-center flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
                               title="Enlarge inventory"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -496,11 +552,11 @@ function App() {
                             </button>
                           </div>
                         </td>
-                        <td className="px-2 py-4 whitespace-nowrap text-center">
+                        <td className="px-2 py-4 whitespace-nowrap text-center w-28">
                           <div className="flex items-center justify-center space-x-1">
                             <button
                               onClick={() => openEditModal(prompt)}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all"
+                              className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all"
                               title="Edit"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -509,7 +565,7 @@ function App() {
                             </button>
                             <button
                               onClick={() => openDeleteModal(prompt)}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-all"
+                              className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-all"
                               title="Delete"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -943,7 +999,7 @@ function App() {
           }}
         >
           <div
-            className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-4xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp"
+            className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-5xl mx-4 max-h-[85vh] overflow-y-auto transform animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-8">
@@ -1079,37 +1135,355 @@ function App() {
           onClick={() => {
             setShowKnowledgebaseModal(false);
             setSelectedPrompt(null);
+            setKbTab('All');
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-8 py-6 text-white">
-              <div className="flex items-center justify-between">
+            <div className="p-6 sm:p-8 border-b border-gray-200">
+              <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold">Knowledgebase</h2>
-                  <p className="text-blue-100 mt-1">Prompt: {selectedPrompt.name}</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Knowledge Sources</h2>
+                  <p className="text-gray-500 mt-1">Add and manage sources your bot will use to learn and respond to users.</p>
                 </div>
                 <button
                   onClick={() => {
                     setShowKnowledgebaseModal(false);
                     setSelectedPrompt(null);
                   }}
-                  className="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="Close"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-            </div>
-            <div className="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
-                  {selectedPrompt.knowledgebase}
-                </pre>
+              <div className="mt-6">
+                <div className="flex flex-wrap items-center gap-6 text-sm font-semibold">
+                  {['All','Web Crawler','FAQs','Tables','Rich Text','File Upload'].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setKbTab(tab)}
+                      className={`pb-2 transition-colors ${kbTab === tab ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
               </div>
+            </div>
+            <div className="p-6 sm:p-8 overflow-y-auto max-h-[calc(90vh-150px)] space-y-6">
+              {kbTab === 'All' && (
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
+                    {selectedPrompt.knowledgebase}
+                  </pre>
+                </div>
+              )}
+              {kbTab === 'Web Crawler' && (
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
+                  <div className="flex items-start mb-4">
+                    <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center mr-3">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Web Crawler</h3>
+                      <p className="text-gray-500">Automatically crawl and extract content from a website to train your bot.</p>
+                    </div>
+                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Enter Domain</label>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select value={crawlerMode} onChange={(e)=>setCrawlerMode(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg bg-white min-w-[160px]">
+                      <option>Exact URL</option>
+                      <option>All URLs with the path</option>
+                      <option>All URLs in this domain</option>
+                    </select>
+                    <input value={crawlerUrl} onChange={(e)=>setCrawlerUrl(e.target.value)} placeholder="Enter URL" className="flex-1 px-4 py-2 border border-gray-300 rounded-lg" />
+                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Extract Data</button>
+                  </div>
+                </div>
+              )}
+              {kbTab === 'FAQs' && (
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
+                  <div className="flex items-start mb-5">
+                    <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
+                      <span className="text-gray-700 font-bold">?</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">FAQs</h3>
+                      <p className="text-gray-500">Write a question and answer pair to help your bot answer common questions.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex items-center mb-2">
+                        <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold mr-2">Q</span>
+                        <span className="text-xs text-gray-500">Your question</span>
+                      </div>
+                      <textarea
+                        value={faqQ}
+                        onChange={(e)=>setFaqQ(e.target.value)}
+                        rows={4}
+                        placeholder="Your question goes here"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        maxLength={1000}
+                      />
+                      <div className="text-xs text-gray-400 text-right mt-1">{faqQ.length}/1000 characters</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center mb-2">
+                        <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-green-50 text-green-600 text-xs font-semibold mr-2">A</span>
+                        <span className="text-xs text-gray-500">Your answer</span>
+                      </div>
+                      <textarea
+                        value={faqA}
+                        onChange={(e)=>setFaqA(e.target.value)}
+                        rows={5}
+                        placeholder="Your answer goes here"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        maxLength={1000}
+                      />
+                      <div className="text-xs text-gray-400 text-right mt-1">{faqA.length}/1000 characters</div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4">
+                      <button className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                      <button className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Save</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {kbTab === 'Tables' && (
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Table Upload</h3>
+                  <div className="flex items-center text-sm text-gray-600 mb-4">
+                    <span className="flex items-center text-blue-600 font-semibold">1 <span className="ml-2">Upload File</span></span>
+                    <span className="mx-4 text-gray-300">——</span>
+                    <span className="text-gray-400">2 Column Selection</span>
+                    <span className="mx-4 text-gray-300">——</span>
+                    <span className="text-gray-400">3 Summary</span>
+                  </div>
+                  <div
+                    className={`rounded-xl p-10 text-center cursor-pointer transition-colors ${tableDragging ? 'border-2 border-blue-500 bg-blue-50/30' : 'border-2 border-dashed border-blue-200 hover:border-blue-400'}`}
+                    onDragOver={(e)=>{e.preventDefault();}}
+                    onDragEnter={(e)=>{e.preventDefault(); setTableDragging(true);}}
+                    onDragLeave={(e)=>{e.preventDefault(); setTableDragging(false);}}
+                    onDrop={(e)=>handleDrop(e,'table')}
+                    onClick={()=>tableInputRef.current && tableInputRef.current.click()}
+                  >
+                    <div className="mx-auto mb-3 w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0l-4 4m4-4v12"/></svg>
+                    </div>
+                    {tableFiles.length === 0 ? (
+                      <>
+                        <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold mb-2">Drag CSV here</div>
+                        <div className="text-gray-700">Click to upload or drag and drop</div>
+                        <div className="text-xs mt-1 text-gray-500">CSV file only (max 50 MB)</div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-gray-700">
+                        Selected: {tableFiles.map(f=>f.name).join(', ')}
+                      </div>
+                    )}
+                    <input ref={tableInputRef} type="file" accept=".csv" className="hidden" onChange={(e)=> setTableFiles(Array.from(e.target.files||[]))} />
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Enter a name for your table source" />
+                  </div>
+                  <div className="flex justify-end gap-3 mt-5">
+                    <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Next</button>
+                  </div>
+                </div>
+              )}
+              {kbTab === 'Rich Text' && (
+                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow">
+                  <div className="grid grid-cols-12 gap-6">
+                    {/* Sidebar Saved List */}
+                    <aside className="col-span-12 md:col-span-3 border border-gray-200 rounded-xl bg-gray-50 p-4">
+                      {rtSaved.length === 0 ? (
+                        <div className="text-xs text-gray-400">No saved content yet</div>
+                      ) : (
+                        <ul className="space-y-2 max-h-[400px] overflow-y-auto">
+                          {rtSaved.map(item => (
+                            <li key={item.id}>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="flex-1 text-left p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-100"
+                                  onClick={()=>{
+                                    setRtName(item.name);
+                                    setRtContent(item.html);
+                                    if (rtRef.current) rtRef.current.innerHTML = item.html;
+                                  }}
+                                >
+                                  <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                                  <div className="text-xs text-gray-500 truncate" dangerouslySetInnerHTML={{__html: item.html}} />
+                                </button>
+                                <button
+                                  className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                                  title="Delete"
+                                  onClick={(e)=>{
+                                    e.stopPropagation();
+                                    setRtSaved(prev => prev.filter(i => i.id !== item.id));
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </aside>
+
+                    {/* Editor Area */}
+                    <section className="col-span-12 md:col-span-9">
+                      <input
+                        value={rtName}
+                        onChange={(e)=>setRtName(e.target.value)}
+                        className="w-full mb-4 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter Name"
+                      />
+                      <div className="flex flex-wrap items-center gap-2 p-2 border border-gray-200 rounded-xl bg-gray-50 mb-4 text-sm text-gray-700">
+                        <select
+                          value={rtBlock}
+                          onChange={(e)=>{
+                            const v = e.target.value; setRtBlock(v);
+                            exec('formatBlock', v === 'Heading' ? 'H2' : 'P');
+                          }}
+                          className="h-9 px-2 border border-gray-300 rounded-md bg-white"
+                        >
+                          <option>Paragraph</option>
+                          <option>Heading</option>
+                        </select>
+                        <select value={rtFamily} onChange={(e)=>setRtFamily(e.target.value)} className="h-9 px-2 border border-gray-300 rounded-md bg-white">
+                          <option>Inter</option>
+                          <option>System</option>
+                        </select>
+                        <select value={rtSize} onChange={(e)=>setRtSize(e.target.value)} className="h-9 px-2 border border-gray-300 rounded-md bg-white">
+                          <option>14px</option>
+                          <option>16px</option>
+                          <option>18px</option>
+                        </select>
+                        <select value={rtLine} onChange={(e)=>setRtLine(e.target.value)} className="h-9 px-2 border border-gray-300 rounded-md bg-white">
+                          <option>1.2</option>
+                          <option>1.5</option>
+                          <option>1.8</option>
+                        </select>
+                        <button
+                          onClick={()=>exec('bold')}
+                          className={`h-9 w-9 border rounded-md bg-white font-semibold ${rtBold ? 'border-blue-500 text-blue-600' : 'border-gray-300'}`}
+                          type="button"
+                        >
+                          B
+                        </button>
+                        <button
+                          onClick={()=>exec('italic')}
+                          className={`h-9 w-9 border rounded-md bg-white italic ${rtItalic ? 'border-blue-500 text-blue-600' : 'border-gray-300'}`}
+                          type="button"
+                        >
+                          I
+                        </button>
+                        <button
+                          onClick={()=>exec('underline')}
+                          className={`h-9 w-9 border rounded-md bg-white underline ${rtUnderline ? 'border-blue-500 text-blue-600' : 'border-gray-300'}`}
+                          type="button"
+                        >
+                          U
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <div
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[240px]"
+                          contentEditable
+                          suppressContentEditableWarning
+                          ref={rtRef}
+                          onInput={(e)=>{ setRtContent(e.currentTarget.innerHTML); updateInlineStates(); }}
+                          onMouseUp={updateInlineStates}
+                          onKeyUp={updateInlineStates}
+                          style={{
+                            fontFamily: rtFamily === 'Inter' ? 'Inter, ui-sans-serif, system-ui' : 'ui-sans-serif, system-ui',
+                            fontSize: rtSize,
+                            lineHeight: rtLine
+                          }}
+                        />
+                        {rtContent.trim().length === 0 && (
+                          <span className="pointer-events-none absolute top-3 left-4 text-gray-400">Start typing your content...</span>
+                        )}
+                      </div>
+                      <div className="flex justify-end gap-3 mt-4">
+                        <button
+                          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                          onClick={()=>{
+                            setRtName('');
+                            setRtContent('');
+                            if (rtRef.current) rtRef.current.innerHTML = '';
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                          onClick={()=>{
+                            if (!rtName.trim() && !rtContent.trim()) return;
+                            setRtSaved(prev => [{ id: Date.now(), name: rtName || 'Untitled', html: rtContent }, ...prev]);
+                            setRtName('');
+                            setRtContent('');
+                            if (rtRef.current) rtRef.current.innerHTML = '';
+                          }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              )}
+              {kbTab === 'File Upload' && (
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
+                  <div className="flex items-start mb-4">
+                    <div className="h-10 w-10 rounded-lg bg-gray-50 flex items-center justify-center mr-3">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0l-4 4m4-4v12"/></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Upload Files</h3>
+                      <p className="text-gray-500">Upload files to your knowledge base to train your AI assistant.</p>
+                    </div>
+                  </div>
+                  <div
+                    className={`rounded-xl p-10 text-center text-gray-500 cursor-pointer transition-colors ${fileDragging ? 'border-2 border-blue-500 bg-blue-50/30' : 'border-2 border-dashed border-blue-200 hover:border-blue-400'}`}
+                    onDragOver={(e)=>{e.preventDefault();}}
+                    onDragEnter={(e)=>{e.preventDefault(); setFileDragging(true);}}
+                    onDragLeave={(e)=>{e.preventDefault(); setFileDragging(false);}}
+                    onDrop={(e)=>handleDrop(e,'files')}
+                    onClick={()=>fileInputRef.current && fileInputRef.current.click()}
+                  >
+                    {fileUploadFiles.length === 0 ? (
+                      <>
+                        <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold mb-2">Drag files here</div>
+                        <div>
+                          Drop files here or <span className="text-blue-600">browse</span>
+                        </div>
+                        <div className="text-xs mt-1">Supports PDF, DOC, DOCX</div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-gray-700">
+                        Selected: {fileUploadFiles.map(f=>f.name).join(', ')}
+                      </div>
+                    )}
+                    <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" multiple className="hidden" onChange={(e)=> setFileUploadFiles(Array.from(e.target.files||[]))} />
+                  </div>
+                  <div className="flex justify-end gap-3 mt-5">
+                    <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Upload Files</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1125,7 +1499,7 @@ function App() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-8 py-6 text-white">
@@ -1307,5 +1681,4 @@ function App() {
     </div>
   );
 }
-
 export default App;
