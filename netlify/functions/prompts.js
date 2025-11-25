@@ -136,6 +136,44 @@ export async function handler(event) {
       return { statusCode: 204, headers: jsonHeaders, body: '' };
     }
 
+    // GET /api/kb-file-sources -> list uploaded files
+    if (event.httpMethod === 'GET' && subpath === '/kb-file-sources') {
+      const { prompt_id } = event.queryStringParameters || {};
+
+      let query = supabase
+        .from('kb_file_sources')
+        .select('id, file_name, file_size, mime_type, status, created_at, file_url, prompt_id')
+        .order('created_at', { ascending: false });
+
+      // Filter by prompt_id if provided
+      if (prompt_id) {
+        query = query.eq('prompt_id', prompt_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data || []) };
+    }
+
+    // GET /api/kb-table-sources -> list uploaded CSV files
+    if (event.httpMethod === 'GET' && subpath === '/kb-table-sources') {
+      const { prompt_id } = event.queryStringParameters || {};
+
+      let query = supabase
+        .from('kb_table_sources')
+        .select('id, name, file_name, file_size, mime_type, status, created_at, file_url, prompt_id')
+        .order('created_at', { ascending: false });
+
+      // Filter by prompt_id if provided
+      if (prompt_id) {
+        query = query.eq('prompt_id', prompt_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data || []) };
+    }
+
     // Not found
     return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', method: event.httpMethod, path: subpath }) };
   } catch (err) {
