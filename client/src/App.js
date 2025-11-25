@@ -58,7 +58,6 @@ function App() {
   const fileInputRef = useRef(null);
   const [tableName, setTableName] = useState(''); 
   const [uploadingTable, setUploadingTable] = useState(false);
-  const [fileName, setFileName] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
