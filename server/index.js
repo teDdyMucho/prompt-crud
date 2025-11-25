@@ -357,6 +357,229 @@ app.post('/api/kb-file-sources', uploadFiles.single('file'), async (req, res) =>
   }
 });
 
+// GET rich text sources from kb_rich_text_sources
+app.get('/api/kb-rich-text-sources', async (req, res) => {
+  try {
+    const { prompt_id } = req.query;
+
+    let query = supabase
+      .from('kb_rich_text_sources')
+      .select('id, name, content, block_type, font_family, font_size, line_height, is_bold, is_italic, is_underline, status, created_at, updated_at, prompt_id')
+      .order('created_at', { ascending: false });
+
+    // Filter by prompt_id if provided
+    if (prompt_id) {
+      query = query.eq('prompt_id', prompt_id);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching rich text sources:', error);
+      return res.status(500).json({ error: 'Failed to fetch rich text sources' });
+    }
+
+    return res.json(data || []);
+  } catch (err) {
+    console.error('Unexpected error fetching rich text sources:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
+// POST create rich text source in kb_rich_text_sources
+app.post('/api/kb-rich-text-sources', async (req, res) => {
+  try {
+    console.log('=== Rich Text Save Request ===');
+    console.log('Request body:', req.body);
+    console.log('Request headers:', req.headers);
+
+    const { 
+      name, 
+      content, 
+      block_type, 
+      font_family, 
+      font_size, 
+      line_height, 
+      is_bold, 
+      is_italic, 
+      is_underline, 
+      prompt_id 
+    } = req.body;
+
+    console.log('Extracted values:', { name, content: content?.substring(0, 50) + '...', prompt_id });
+
+    if (!name || !name.trim()) {
+      console.log('Validation failed: Name is required');
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (!content || !content.trim()) {
+      console.log('Validation failed: Content is required');
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    console.log('Validation passed');
+
+    // Test Supabase connection first
+    console.log('Testing Supabase connection...');
+    const { data: testData, error: testError } = await supabase
+      .from('prompts')
+      .select('id')
+      .limit(1);
+    
+    if (testError) {
+      console.error('Supabase connection test failed:', testError);
+      return res.status(500).json({ error: 'Database connection failed', details: testError.message });
+    }
+    console.log('Supabase connection OK');
+
+    // Prepare the data to insert
+    const insertData = {
+      name: name.trim(),
+      content: content.trim(),
+      block_type: block_type || 'Paragraph',
+      font_family: font_family || 'Inter',
+      font_size: font_size || '14px',
+      line_height: line_height || '1.5',
+      is_bold: Boolean(is_bold),
+      is_italic: Boolean(is_italic),
+      is_underline: Boolean(is_underline),
+      status: 'saved',
+      prompt_id: prompt_id ? parseInt(prompt_id) : null
+    };
+
+    console.log('Final insert data:', insertData);
+
+    // Insert record into kb_rich_text_sources table
+    console.log('Attempting to insert into kb_rich_text_sources...');
+    const { data, error } = await supabase
+      .from('kb_rich_text_sources')
+      .insert([insertData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('=== SUPABASE INSERT ERROR ===');
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      console.error('Error hint:', error.hint);
+      return res.status(500).json({ 
+        error: 'Failed to save rich text source', 
+        details: error.message,
+        code: error.code,
+        hint: error.hint
+      });
+    }
+
+    console.log('=== SUCCESS ===');
+    console.log('Rich text source created successfully:', data);
+    return res.status(201).json(data);
+  } catch (err) {
+    console.error('=== UNEXPECTED ERROR ===');
+    console.error('Error type:', typeof err);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    console.error('Full error:', err);
+    return res.status(500).json({ 
+      error: 'Unexpected server error', 
+      details: err.message,
+      type: typeof err
+    });
+  }
+});
+
+// PUT update rich text source in kb_rich_text_sources
+app.put('/api/kb-rich-text-sources/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      name, 
+      content, 
+      block_type, 
+      font_family, 
+      font_size, 
+      line_height, 
+      is_bold, 
+      is_italic, 
+      is_underline, 
+      prompt_id 
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    console.log('Updating Rich Text:', { id, name, prompt_id, contentLength: content.length });
+
+    // Update record in kb_rich_text_sources table
+    const { data, error } = await supabase
+      .from('kb_rich_text_sources')
+      .update({
+        name: name.trim(),
+        content: content.trim(),
+        block_type: block_type || 'Paragraph',
+        font_family: font_family || 'Inter',
+        font_size: font_size || '14px',
+        line_height: line_height || '1.5',
+        is_bold: Boolean(is_bold),
+        is_italic: Boolean(is_italic),
+        is_underline: Boolean(is_underline),
+        status: 'saved',
+        updated_at: new Date().toISOString(),
+        prompt_id: prompt_id ? parseInt(prompt_id) : null
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating rich text source:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Rich text source not found' });
+      }
+      return res.status(500).json({ error: 'Failed to update rich text source', details: error.message });
+    }
+
+    console.log('Rich text source updated successfully:', data);
+    return res.status(200).json(data);
+  } catch (err) {
+    console.error('Unexpected error updating rich text source:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
+// DELETE rich text source from kb_rich_text_sources
+app.delete('/api/kb-rich-text-sources/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete the record from database
+    const { error } = await supabase
+      .from('kb_rich_text_sources')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Rich text source not found' });
+      }
+      throw error;
+    }
+
+    console.log('Rich text source deleted successfully:', id);
+    return res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting rich text source:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

@@ -60,6 +60,9 @@ function App() {
   const [uploadingTable, setUploadingTable] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [richTextSources, setRichTextSources] = useState([]);
+  const [savingRichText, setSavingRichText] = useState(false);
+  const [editingRichTextId, setEditingRichTextId] = useState(null);
 
   const updateInlineStates = () => {
     try {
@@ -203,10 +206,139 @@ function App() {
     }
   };
 
+  // Fetch rich text sources
+  const fetchRichTextSources = async (promptId = null) => {
+    try {
+      log('RichText:fetch:start', { promptId });
+      const url = promptId 
+        ? `${API_BASE_URL}/kb-rich-text-sources?prompt_id=${promptId}`
+        : `${API_BASE_URL}/kb-rich-text-sources`;
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const sources = await response.json();
+        setRichTextSources(sources);
+        // Also update the rtSaved state for backward compatibility
+        setRtSaved(sources.map(source => ({
+          id: source.id,
+          name: source.name,
+          content: source.content
+        })));
+        log('RichText:fetch:success', { count: sources.length, sources });
+      } else {
+        throw new Error(`Failed to fetch rich text sources: ${response.status}`);
+      }
+    } catch (error) {
+      logError('RichText:fetch', error);
+      setRichTextSources([]);
+      setRtSaved([]);
+    }
+  };
+
+  // Save rich text source (CREATE or UPDATE)
+  const saveRichTextSource = async () => {
+    if (!rtName.trim() || !rtContent.trim()) {
+      log('RichText:save:validation', { nameEmpty: !rtName.trim(), contentEmpty: !rtContent.trim() });
+      return;
+    }
+
+    setSavingRichText(true);
+    try {
+      const isUpdate = editingRichTextId !== null;
+      const method = isUpdate ? 'PUT' : 'POST';
+      const url = isUpdate 
+        ? `${API_BASE_URL}/kb-rich-text-sources/${editingRichTextId}`
+        : `${API_BASE_URL}/kb-rich-text-sources`;
+
+      log('RichText:save:start', { 
+        name: rtName, 
+        contentLength: rtContent.length, 
+        promptId: selectedPrompt?.id,
+        isUpdate,
+        editingId: editingRichTextId
+      });
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: rtName,
+          content: rtContent,
+          block_type: rtBlock,
+          font_family: rtFamily,
+          font_size: rtSize,
+          line_height: rtLine,
+          is_bold: rtBold,
+          is_italic: rtItalic,
+          is_underline: rtUnderline,
+          prompt_id: selectedPrompt?.id || null
+        }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        log('RichText:save:success', { result, isUpdate });
+        
+        // Clear the editor and reset editing state
+        setRtName('');
+        setRtContent('');
+        setEditingRichTextId(null);
+        if (rtRef.current) {
+          rtRef.current.innerHTML = '';
+        }
+        
+        // Refresh the rich text sources list
+        if (selectedPrompt) {
+          fetchRichTextSources(selectedPrompt.id);
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`${isUpdate ? 'Update' : 'Save'} failed: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      logError('RichText:save', error);
+    } finally {
+      setSavingRichText(false);
+    }
+  };
+
+  // Delete rich text source
+  const deleteRichTextSource = async (sourceId, sourceName) => {
+    try {
+      log('RichText:delete:start', { sourceId, sourceName });
+      
+      const response = await fetch(`${API_BASE_URL}/kb-rich-text-sources/${sourceId}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        log('RichText:delete:success', { sourceId, sourceName });
+        // Refresh the rich text sources list
+        if (selectedPrompt) {
+          fetchRichTextSources(selectedPrompt.id);
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Delete failed: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      logError('RichText:delete', error);
+    }
+  };
+
   // Fetch uploaded files when File Upload tab is selected
   useEffect(() => {
     if (kbTab === 'File Upload' && selectedPrompt) {
       fetchUploadedFiles(selectedPrompt.id);
+    }
+  }, [kbTab, selectedPrompt]);
+
+  // Fetch rich text sources when Rich Text tab is selected
+  useEffect(() => {
+    if (kbTab === 'Rich Text' && selectedPrompt) {
+      fetchRichTextSources(selectedPrompt.id);
     }
   }, [kbTab, selectedPrompt]);
 
@@ -1466,19 +1598,23 @@ function App() {
                                   className="flex-1 text-left p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-100"
                                   onClick={()=>{
                                     setRtName(item.name);
-                                    setRtContent(item.html);
-                                    if (rtRef.current) rtRef.current.innerHTML = item.html;
+                                    setRtContent(item.content);
+                                    setEditingRichTextId(item.id); // Set editing ID
+                                    if (rtRef.current) rtRef.current.innerHTML = item.content;
+                                    log('RichText:load:existing', { id: item.id, name: item.name });
                                   }}
                                 >
                                   <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                                  <div className="text-xs text-gray-500 truncate" dangerouslySetInnerHTML={{__html: item.html}} />
+                                  <div className="text-xs text-gray-500 truncate" dangerouslySetInnerHTML={{__html: item.content}} />
                                 </button>
                                 <button
                                   className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
                                   title="Delete"
                                   onClick={(e)=>{
                                     e.stopPropagation();
-                                    setRtSaved(prev => prev.filter(i => i.id !== item.id));
+                                    if (window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                                      deleteRichTextSource(item.id, item.name);
+                                    }
                                   }}
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1573,22 +1709,19 @@ function App() {
                           onClick={()=>{
                             setRtName('');
                             setRtContent('');
+                            setEditingRichTextId(null); // Clear editing state
                             if (rtRef.current) rtRef.current.innerHTML = '';
+                            log('RichText:cancel', { wasEditing: editingRichTextId !== null });
                           }}
                         >
                           Cancel
                         </button>
                         <button
-                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                          onClick={()=>{
-                            if (!rtName.trim() && !rtContent.trim()) return;
-                            setRtSaved(prev => [{ id: Date.now(), name: rtName || 'Untitled', html: rtContent }, ...prev]);
-                            setRtName('');
-                            setRtContent('');
-                            if (rtRef.current) rtRef.current.innerHTML = '';
-                          }}
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={saveRichTextSource}
+                          disabled={savingRichText || !rtName.trim() || !rtContent.trim()}
                         >
-                          Save
+                          {savingRichText ? (editingRichTextId ? 'Updating...' : 'Saving...') : (editingRichTextId ? 'Update' : 'Save')}
                         </button>
                       </div>
                     </section>

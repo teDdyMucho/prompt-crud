@@ -194,6 +194,145 @@ export async function handler(event) {
       return { statusCode: 204, headers: jsonHeaders, body: '' };
     }
 
+    // GET /api/kb-rich-text-sources -> list rich text sources
+    if (event.httpMethod === 'GET' && subpath === '/kb-rich-text-sources') {
+      const { prompt_id } = event.queryStringParameters || {};
+
+      let query = supabase
+        .from('kb_rich_text_sources')
+        .select('id, name, content, block_type, font_family, font_size, line_height, is_bold, is_italic, is_underline, status, created_at, updated_at, prompt_id')
+        .order('created_at', { ascending: false });
+
+      // Filter by prompt_id if provided
+      if (prompt_id) {
+        query = query.eq('prompt_id', prompt_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data || []) };
+    }
+
+    // POST /api/kb-rich-text-sources -> create rich text source
+    if (event.httpMethod === 'POST' && subpath === '/kb-rich-text-sources') {
+      const { 
+        name, 
+        content, 
+        block_type, 
+        font_family, 
+        font_size, 
+        line_height, 
+        is_bold, 
+        is_italic, 
+        is_underline, 
+        prompt_id 
+      } = JSON.parse(event.body || '{}');
+
+      if (!name || !name.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name is required' }) };
+      }
+
+      if (!content || !content.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Content is required' }) };
+      }
+
+      const { data, error } = await supabase
+        .from('kb_rich_text_sources')
+        .insert([{
+          name: name.trim(),
+          content: content.trim(),
+          block_type: block_type || 'Paragraph',
+          font_family: font_family || 'Inter',
+          font_size: font_size || '14px',
+          line_height: line_height || '1.5',
+          is_bold: Boolean(is_bold),
+          is_italic: Boolean(is_italic),
+          is_underline: Boolean(is_underline),
+          status: 'saved',
+          prompt_id: prompt_id && prompt_id.trim() ? parseInt(prompt_id) : null
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { statusCode: 201, headers: jsonHeaders, body: JSON.stringify(data) };
+    }
+
+    // PUT /api/kb-rich-text-sources/:id -> update rich text source
+    const updateRichTextMatch = event.httpMethod === 'PUT' && /^\/kb-rich-text-sources\/([^\/]+)$/.test(subpath);
+    if (updateRichTextMatch) {
+      const id = subpath.split('/')[2];
+      const { 
+        name, 
+        content, 
+        block_type, 
+        font_family, 
+        font_size, 
+        line_height, 
+        is_bold, 
+        is_italic, 
+        is_underline, 
+        prompt_id 
+      } = JSON.parse(event.body || '{}');
+
+      if (!name || !name.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Name is required' }) };
+      }
+
+      if (!content || !content.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Content is required' }) };
+      }
+
+      const { data, error } = await supabase
+        .from('kb_rich_text_sources')
+        .update({
+          name: name.trim(),
+          content: content.trim(),
+          block_type: block_type || 'Paragraph',
+          font_family: font_family || 'Inter',
+          font_size: font_size || '14px',
+          line_height: line_height || '1.5',
+          is_bold: Boolean(is_bold),
+          is_italic: Boolean(is_italic),
+          is_underline: Boolean(is_underline),
+          status: 'saved',
+          updated_at: new Date().toISOString(),
+          prompt_id: prompt_id ? parseInt(prompt_id) : null
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Rich text source not found' }) };
+        }
+        throw error;
+      }
+
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data) };
+    }
+
+    // DELETE /api/kb-rich-text-sources/:id -> delete rich text source
+    const deleteRichTextMatch = event.httpMethod === 'DELETE' && /^\/kb-rich-text-sources\/([^\/]+)$/.test(subpath);
+    if (deleteRichTextMatch) {
+      const id = subpath.split('/')[2];
+
+      const { error } = await supabase
+        .from('kb_rich_text_sources')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Rich text source not found' }) };
+        }
+        throw error;
+      }
+
+      return { statusCode: 204, headers: jsonHeaders, body: '' };
+    }
+
     // Not found
     return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', method: event.httpMethod, path: subpath }) };
   } catch (err) {
