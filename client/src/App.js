@@ -68,6 +68,26 @@ function App() {
   const [savingFaq, setSavingFaq] = useState(false);
   const [editingFaqId, setEditingFaqId] = useState(null);
 
+  // Confirmation modal states
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState({
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null
+  });
+
+  // Helper function to show confirmation modal
+  const showConfirmation = (title, message, onConfirm) => {
+    setConfirmModalData({
+      title,
+      message,
+      onConfirm,
+      onCancel: () => setShowConfirmModal(false)
+    });
+    setShowConfirmModal(true);
+  };
+
   const updateInlineStates = () => {
     try {
       setRtBold(document.queryCommandState('bold'));
@@ -1630,9 +1650,14 @@ function App() {
                                       title="Delete"
                                       onClick={(e)=>{
                                         e.stopPropagation();
-                                        if (window.confirm(`Are you sure you want to delete this FAQ?`)) {
-                                          deleteFaqSource(item.id, item.question);
-                                        }
+                                        showConfirmation(
+                                          'Delete FAQ',
+                                          `Are you sure you want to delete this FAQ?`,
+                                          () => {
+                                            deleteFaqSource(item.id, item.question);
+                                            setShowConfirmModal(false);
+                                          }
+                                        );
                                       }}
                                     >
                                       <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1824,9 +1849,14 @@ function App() {
                                   title="Delete"
                                   onClick={(e)=>{
                                     e.stopPropagation();
-                                    if (window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
-                                      deleteRichTextSource(item.id, item.name);
-                                    }
+                                    showConfirmation(
+                                      'Delete Rich Text',
+                                      `Are you sure you want to delete "${item.name}"?`,
+                                      () => {
+                                        deleteRichTextSource(item.id, item.name);
+                                        setShowConfirmModal(false);
+                                      }
+                                    );
                                   }}
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2132,9 +2162,14 @@ function App() {
                               {/* Delete Button */}
                               <button 
                                 onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete "${file.file_name}"?`)) {
-                                    deleteUploadedFile(file.id, file.file_name);
-                                  }
+                                  showConfirmation(
+                                    'Delete File',
+                                    `Are you sure you want to delete "${file.file_name}"?`,
+                                    () => {
+                                      deleteUploadedFile(file.id, file.file_name);
+                                      setShowConfirmModal(false);
+                                    }
+                                  );
                                 }}
                                 className="p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                 title="Delete file"
@@ -2341,6 +2376,39 @@ function App() {
                   Done
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 animate-slideUp">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">{confirmModalData.title}</h3>
+            </div>
+            
+            {/* Content */}
+            <div className="px-6 py-4">
+              <p className="text-gray-600 text-sm leading-relaxed">{confirmModalData.message}</p>
+            </div>
+            
+            {/* Actions */}
+            <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row gap-3 sm:gap-2 sm:justify-end">
+              <button
+                onClick={confirmModalData.onCancel}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors duration-200 order-2 sm:order-1"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={confirmModalData.onConfirm}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors duration-200 order-1 sm:order-2"
+              >
+                Yes, Delete
+              </button>
             </div>
           </div>
         </div>
