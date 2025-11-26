@@ -66,7 +66,7 @@ app.get('/api/prompts', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .select('id, name, prompt, location_id, business_name, knowledgebase, inventory, created_at')
+      .select('id, name, prompt, location_id, business_name, knowledgebase, inventory, Web_Crawler, created_at')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -83,7 +83,7 @@ app.get('/api/prompts', async (req, res) => {
 
 // POST create new prompt in Supabase
 app.post('/api/prompts', async (req, res) => {
-  const { name, prompt, location_id, business_name, knowledgebase, inventory } = req.body;
+  const { name, prompt, location_id, business_name, knowledgebase, inventory, Web_Crawler } = req.body;
 
   if (!name || !prompt) {
     return res.status(400).json({ error: 'Name and prompt are required' });
@@ -92,7 +92,7 @@ app.post('/api/prompts', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .insert([{ name, prompt, location_id, business_name, knowledgebase, inventory }])
+      .insert([{ name, prompt, location_id, business_name, knowledgebase, inventory, Web_Crawler }])
       .select()
       .single();
 
@@ -111,7 +111,7 @@ app.post('/api/prompts', async (req, res) => {
 // PUT update prompt in Supabase
 app.put('/api/prompts/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, prompt, location_id, business_name, knowledgebase, inventory } = req.body;
+  const { name, prompt, location_id, business_name, knowledgebase, inventory, Web_Crawler } = req.body;
 
   if (!name || !prompt) {
     return res.status(400).json({ error: 'Name and prompt are required' });
@@ -120,7 +120,7 @@ app.put('/api/prompts/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('prompts')
-      .update({ name, prompt, location_id, business_name, knowledgebase, inventory })
+      .update({ name, prompt, location_id, business_name, knowledgebase, inventory, Web_Crawler })
       .eq('id', id)
       .select()
       .single();

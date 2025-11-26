@@ -60,6 +60,9 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [savingRichText, setSavingRichText] = useState(false);
   const [editingRichTextId, setEditingRichTextId] = useState(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedMarkdown, setExtractedMarkdown] = useState('');
+  const [copiedMd, setCopiedMd] = useState(false);
   
   // FAQ states
   const [faqQuestion, setFaqQuestion] = useState('');
@@ -154,6 +157,95 @@ function App() {
       document.execCommand(cmd, false, arg);
       updateInlineStates();
       rtRef.current && rtRef.current.focus();
+    } catch {}
+  };
+
+  const handleExtract = async () => {
+    try {
+      const payload = {
+        url: (crawlerUrl || '').trim(),
+        mode: crawlerMode,
+        prompt_id: selectedPrompt?.id || null,
+        prompt_name: selectedPrompt?.name || '',
+        inventory_name: (() => {
+          const inv = selectedPrompt?.inventory;
+          if (typeof inv === 'string') return inv;
+          if (inv && typeof inv === 'object') return inv.name || JSON.stringify(inv);
+          return '';
+        })(),
+      };
+      if (!payload.url) {
+        return;
+      }
+      setExtracting(true);
+      setExtractedMarkdown('');
+      const res = await fetch('https://groundstandard.app.n8n.cloud/webhook/Extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        throw new Error(`Webhook HTTP ${res.status}: ${raw}`);
+      }
+      let md = '';
+      try {
+        const json = JSON.parse(raw);
+        if (Array.isArray(json)) {
+          md = json[0]?.data?.markdown || json[0]?.markdown || '';
+        } else if (json && typeof json === 'object') {
+          md = json.data?.markdown || json.markdown || '';
+        }
+      } catch {
+        // If response isn't JSON, ignore
+      }
+      setExtractedMarkdown(md || '');
+      setCopiedMd(false);
+
+      if (selectedPrompt?.id && md) {
+        try {
+          await fetch(`${API_BASE_URL}/prompts/${selectedPrompt.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: selectedPrompt.name || '',
+              prompt: selectedPrompt.prompt || '',
+              location_id: selectedPrompt.location_id || '',
+              business_name: selectedPrompt.business_name || '',
+              knowledgebase: selectedPrompt.knowledgebase || '',
+              inventory: selectedPrompt.inventory || '',
+              Web_Crawler: md,
+            }),
+          });
+        } catch {}
+      }
+    } catch (err) {
+      console.error('[APP][Error] extract webhook', err);
+      setExtractedMarkdown('');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleCopyMarkdown = async () => {
+    try {
+      const text = extractedMarkdown || '';
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiedMd(true);
+      setTimeout(() => setCopiedMd(false), 1500);
     } catch {}
   };
   const [selectedPrompt, setSelectedPrompt] = useState(null);
@@ -361,6 +453,12 @@ function App() {
   useEffect(() => {
     if (kbTab === 'Rich Text' && selectedPrompt) {
       fetchRichTextSources(selectedPrompt.id);
+    }
+  }, [kbTab, selectedPrompt]);
+
+  useEffect(() => {
+    if (kbTab === 'Web Crawler' && selectedPrompt) {
+      setExtractedMarkdown(selectedPrompt.Web_Crawler || '');
     }
   }, [kbTab, selectedPrompt]);
 
@@ -674,7 +772,7 @@ function App() {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center">
                         <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md mr-3">
-                          <span className="text-white font-bold text-base">{prompt.name.charAt(0).toUpperCase()}</span>
+                          <span className="text-white font-bold text-base">{(prompt.name || '').charAt(0).toUpperCase()}</span>
                         </div>
                         <div>
                           <h3 className="text-base font-bold text-gray-900">{prompt.name}</h3>
@@ -824,7 +922,7 @@ function App() {
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
                               <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
-                                <span className="text-white font-bold text-base">{prompt.name.charAt(0).toUpperCase()}</span>
+                                <span className="text-white font-bold text-base">{(prompt.name || '').charAt(0).toUpperCase()}</span>
                               </div>
                             </div>
                             <div className="ml-4">
@@ -1548,8 +1646,23 @@ function App() {
                       <option>All URLs in this domain</option>
                     </select>
                     <input value={crawlerUrl} onChange={(e)=>setCrawlerUrl(e.target.value)} placeholder="Enter URL" className="flex-1 px-4 py-2 border border-gray-300 rounded-lg" />
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Extract Data</button>
+                    <button onClick={handleExtract} disabled={extracting || !crawlerUrl?.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">{extracting ? 'Extracting...' : 'Extract Data'}</button>
                   </div>
+                  {extracting && (
+                    <div className="mt-4 text-sm text-gray-600">Waiting for webhook response...</div>
+                  )}
+                  {!extracting && extractedMarkdown && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-800">Extracted Markdown</div>
+                        <div className="flex items-center gap-2">
+                          {copiedMd && <span className="text-xs text-green-600">Copied</span>}
+                          <button onClick={handleCopyMarkdown} className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-800 rounded border border-gray-300">Copy</button>
+                        </div>
+                      </div>
+                      <pre className="max-h-80 overflow-auto text-sm bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap">{extractedMarkdown}</pre>
+                    </div>
+                  )}
                 </div>
               )}
               {kbTab === 'FAQs' && (
