@@ -1465,14 +1465,14 @@ function App() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden animate-slideUp"
+            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[95vh] flex flex-col animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 sm:p-8 border-b border-gray-200">
+            <div className="p-4 sm:p-6 border-b border-gray-200 flex-shrink-0">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Knowledge Sources</h2>
-                  <p className="text-gray-500 mt-1">Add and manage sources your bot will use to learn and respond to users.</p>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Knowledge Sources</h2>
+                  <p className="text-gray-500 mt-1 text-sm">Add and manage sources your bot will use to learn and respond to users.</p>
                 </div>
                 <button
                   onClick={() => {
@@ -1482,13 +1482,13 @@ function App() {
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   aria-label="Close"
                 >
-                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              <div className="mt-6">
-                <div className="flex flex-wrap items-center gap-6 text-sm font-semibold">
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center gap-4 text-sm font-semibold">
                   {['All','Web Crawler','FAQs','Tables','Rich Text','File Upload'].map(tab => (
                     <button
                       key={tab}
@@ -1501,7 +1501,7 @@ function App() {
                 </div>
               </div>
             </div>
-            <div className="p-6 sm:p-8 overflow-y-auto max-h-[calc(90vh-150px)] space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {kbTab === 'All' && (
                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed font-mono">
@@ -1533,96 +1533,54 @@ function App() {
                 </div>
               )}
               {kbTab === 'FAQs' && (
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
-                  <div className="grid grid-cols-12 gap-6">
-                    {/* Sidebar Saved FAQs List */}
-                    <aside className="col-span-12 md:col-span-4 border border-gray-200 rounded-xl bg-gray-50 p-4">
-                      <h4 className="font-semibold text-gray-900 mb-3">Saved FAQs</h4>
-                      {faqSources.length === 0 ? (
-                        <div className="text-xs text-gray-400">No saved FAQs yet</div>
-                      ) : (
-                        <ul className="space-y-2 max-h-[400px] overflow-y-auto">
-                          {faqSources.map(item => (
-                            <li key={item.id}>
-                              <div className="flex items-start gap-2">
-                                <button
-                                  className="flex-1 text-left p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-100"
-                                  onClick={()=>{
-                                    setFaqQuestion(item.question);
-                                    setFaqAnswer(item.answer);
-                                    setEditingFaqId(item.id);
-                                    log('FAQ:load:existing', { id: item.id, question: item.question.substring(0, 50) + '...' });
-                                  }}
-                                >
-                                  <div className="text-sm font-medium text-gray-900 mb-1">{item.question}</div>
-                                  <div className="text-xs text-gray-500 line-clamp-2">{item.answer}</div>
-                                </button>
-                                <button
-                                  className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
-                                  title="Delete"
-                                  onClick={(e)=>{
-                                    e.stopPropagation();
-                                    if (window.confirm(`Are you sure you want to delete this FAQ?`)) {
-                                      deleteFaqSource(item.id, item.question);
-                                    }
-                                  }}
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </aside>
-
-                    {/* FAQ Form Area */}
-                    <section className="col-span-12 md:col-span-8">
-                      <div className="flex items-start mb-5">
-                        <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
-                          <span className="text-gray-700 font-bold">?</span>
+                <div className="bg-white rounded-xl p-3 sm:p-6 border border-gray-200 shadow">
+                  {/* Mobile-first layout */}
+                  <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6">
+                    {/* FAQ Form Area - Shows first on mobile */}
+                    <section className="lg:col-span-8 order-1 lg:order-2">
+                      <div className="flex items-start mb-4">
+                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
+                          <span className="text-gray-700 font-bold text-sm sm:text-base">?</span>
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900">FAQs</h3>
-                          <p className="text-gray-500">Write a question and answer pair to help your bot answer common questions.</p>
+                          <h3 className="text-base sm:text-lg font-semibold text-gray-900">FAQs</h3>
+                          <p className="text-xs sm:text-sm text-gray-500">Write a question and answer pair to help your bot answer common questions.</p>
                         </div>
                       </div>
-                      <div className="space-y-6">
+                      <div className="space-y-4 sm:space-y-6">
                         <div>
                           <div className="flex items-center mb-2">
-                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold mr-2">Q</span>
+                            <span className="inline-flex items-center justify-center h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold mr-2">Q</span>
                             <span className="text-xs text-gray-500">Your question</span>
                           </div>
                           <textarea
                             value={faqQuestion}
                             onChange={(e)=>setFaqQuestion(e.target.value)}
-                            rows={4}
+                            rows={3}
                             placeholder="Your question goes here"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                             maxLength={1000}
                           />
                           <div className="text-xs text-gray-400 text-right mt-1">{faqQuestion.length}/1000 characters</div>
                         </div>
                         <div>
                           <div className="flex items-center mb-2">
-                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-green-50 text-green-600 text-xs font-semibold mr-2">A</span>
+                            <span className="inline-flex items-center justify-center h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-green-50 text-green-600 text-xs font-semibold mr-2">A</span>
                             <span className="text-xs text-gray-500">Your answer</span>
                           </div>
                           <textarea
                             value={faqAnswer}
                             onChange={(e)=>setFaqAnswer(e.target.value)}
-                            rows={5}
+                            rows={4}
                             placeholder="Your answer goes here"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                             maxLength={1000}
                           />
                           <div className="text-xs text-gray-400 text-right mt-1">{faqAnswer.length}/1000 characters</div>
                         </div>
-                        <div className="flex justify-end gap-3 pt-4">
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-2 sm:pt-4">
                           <button 
-                            className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" 
+                            className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm sm:text-base" 
                             onClick={()=>{
                               setFaqQuestion('');
                               setFaqAnswer('');
@@ -1633,7 +1591,7 @@ function App() {
                             Cancel
                           </button>
                           <button 
-                            className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" 
+                            className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base" 
                             onClick={saveFaqSource}
                             disabled={savingFaq || !faqQuestion.trim() || !faqAnswer.trim()}
                           >
@@ -1642,39 +1600,111 @@ function App() {
                         </div>
                       </div>
                     </section>
+
+                    {/* Saved FAQs List - Shows second on mobile */}
+                    <aside className="lg:col-span-4 order-2 lg:order-1">
+                      <div className="border border-gray-200 rounded-xl bg-gray-50 p-3 sm:p-4 h-fit">
+                        <h4 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">Saved FAQs</h4>
+                        {faqSources.length === 0 ? (
+                          <div className="text-xs text-gray-400">No saved FAQs yet</div>
+                        ) : (
+                          <div className="h-[300px] sm:h-[450px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                            <ul className="space-y-2 pr-2">
+                              {faqSources.map(item => (
+                                <li key={item.id}>
+                                  <div className="flex items-start gap-2">
+                                    <button
+                                      className="flex-1 text-left p-2 sm:p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-100 transition-colors"
+                                      onClick={()=>{
+                                        setFaqQuestion(item.question);
+                                        setFaqAnswer(item.answer);
+                                        setEditingFaqId(item.id);
+                                        log('FAQ:load:existing', { id: item.id, question: item.question.substring(0, 50) + '...' });
+                                      }}
+                                    >
+                                      <div className="text-xs sm:text-sm font-medium text-gray-900 mb-1 break-words">{item.question}</div>
+                                      <div className="text-xs text-gray-500 break-words line-clamp-3">{item.answer}</div>
+                                    </button>
+                                    <button
+                                      className="p-1.5 sm:p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 flex-shrink-0 transition-colors"
+                                      title="Delete"
+                                      onClick={(e)=>{
+                                        e.stopPropagation();
+                                        if (window.confirm(`Are you sure you want to delete this FAQ?`)) {
+                                          deleteFaqSource(item.id, item.question);
+                                        }
+                                      }}
+                                    >
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </aside>
                   </div>
                 </div>
               )}
               {kbTab === 'Tables' && (
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Table Upload</h3>
-                  <div className="flex items-center text-sm text-gray-600 mb-4">
-                    <span className="flex items-center text-blue-600 font-semibold">1 <span className="ml-2">Upload File</span></span>
-                    <span className="mx-4 text-gray-300">——</span>
-                    <span className="text-gray-400">2 Column Selection</span>
-                    <span className="mx-4 text-gray-300">——</span>
-                    <span className="text-gray-400">3 Summary</span>
+                <div className="bg-white rounded-xl p-3 sm:p-6 border border-gray-200 shadow">
+                  <div className="flex items-start mb-4">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2V7zm0 0V5a2 2 0 012-2h6l2 2h6a2 2 0 012 2v2M7 13h10M7 17h4" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900">Table Upload</h3>
+                      <p className="text-xs sm:text-sm text-gray-500">Upload CSV files to create knowledge base tables.</p>
+                    </div>
                   </div>
+                  
+                  {/* Progress Steps - Mobile Optimized */}
+                  <div className="flex items-center text-xs sm:text-sm text-gray-600 mb-4 overflow-x-auto">
+                    <span className="flex items-center text-blue-600 font-semibold whitespace-nowrap">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center mr-2">1</span>
+                      Upload File
+                    </span>
+                    <span className="mx-2 sm:mx-4 text-gray-300 flex-shrink-0">——</span>
+                    <span className="text-gray-400 whitespace-nowrap">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-300 text-white text-xs flex items-center justify-center mr-2">2</span>
+                      Column Selection
+                    </span>
+                    <span className="mx-2 sm:mx-4 text-gray-300 flex-shrink-0">——</span>
+                    <span className="text-gray-400 whitespace-nowrap">
+                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-300 text-white text-xs flex items-center justify-center mr-2">3</span>
+                      Summary
+                    </span>
+                  </div>
+
+                  {/* Upload Area - Mobile Optimized */}
                   <div
-                    className={`rounded-xl p-10 text-center cursor-pointer transition-colors ${tableDragging ? 'border-2 border-blue-500 bg-blue-50/30' : 'border-2 border-dashed border-blue-200 hover:border-blue-400'}`}
+                    className={`rounded-xl p-6 sm:p-10 text-center cursor-pointer transition-colors ${tableDragging ? 'border-2 border-blue-500 bg-blue-50/30' : 'border-2 border-dashed border-blue-200 hover:border-blue-400'}`}
                     onDragOver={(e)=>{e.preventDefault();}}
                     onDragEnter={(e)=>{e.preventDefault(); setTableDragging(true);}}
                     onDragLeave={(e)=>{e.preventDefault(); setTableDragging(false);}}
                     onDrop={(e)=>handleDrop(e,'table')}
                     onClick={()=>tableInputRef.current && tableInputRef.current.click()}
                   >
-                    <div className="mx-auto mb-3 w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0l-4 4m4-4v12"/></svg>
+                    <div className="mx-auto mb-3 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-50 flex items-center justify-center">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0l-4 4m4-4v12"/>
+                      </svg>
                     </div>
                     {tableFiles.length === 0 ? (
                       <>
-                        <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold mb-2">Drag CSV here</div>
-                        <div className="text-gray-700">Click to upload or drag and drop</div>
+                        <div className="inline-flex items-center px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold mb-2">Drag CSV here</div>
+                        <div className="text-sm sm:text-base text-gray-700">Click to upload or drag and drop</div>
                         <div className="text-xs mt-1 text-gray-500">CSV file only (max 50 MB)</div>
                       </>
                     ) : (
-                      <div className="text-sm text-gray-700">
-                        Selected: {tableFiles.map(f=>f.name).join(', ')}
+                      <div className="text-sm text-gray-700 break-words">
+                        <span className="font-medium">Selected:</span> {tableFiles.map(f=>f.name).join(', ')}
                       </div>
                     )}
                     <input ref={tableInputRef} type="file" accept=".csv" className="hidden" onChange={(e)=> {
@@ -1683,8 +1713,10 @@ function App() {
                       log('Tables:fileInput:change', { fileCount: files.length, files: files.map(f => f.name) });
                     }} />
                   </div>
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+
+                  {/* Name Input - Mobile Optimized */}
+                  <div className="mt-4 sm:mt-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Table Name</label>
                     <input 
                       value={tableName}
                       onChange={(e) => {
@@ -1692,13 +1724,15 @@ function App() {
                         setTableName(newName);
                         log('Tables:nameInput:change', { name: newName });
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base" 
                       placeholder="Enter a name for your table source" 
                     />
                   </div>
-                  <div className="flex justify-end gap-3 mt-5">
+
+                  {/* Buttons - Mobile Optimized */}
+                  <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mt-4 sm:mt-6">
                     <button 
-                      className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm sm:text-base"
                       onClick={() => {
                         setTableFiles([]);
                         setTableName('');
@@ -1708,7 +1742,7 @@ function App() {
                       Cancel
                     </button>
                     <button 
-                      className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                       disabled={(() => {
                         const isDisabled = tableFiles.length === 0 || !tableName.trim() || uploadingTable;
                         log('Tables:nextButton:disabled', { 
@@ -2016,58 +2050,93 @@ function App() {
                   {/* Uploaded Files List */}
                   {uploadedFiles.length > 0 && (
                     <div className="mt-6 border-t pt-6">
-                      <h4 className="text-sm font-medium text-gray-900 mb-3">Uploaded Files ({uploadedFiles.length})</h4>
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-base font-semibold text-gray-900">Uploaded Files</h4>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {uploadedFiles.length} {uploadedFiles.length === 1 ? 'file' : 'files'}
+                        </span>
+                      </div>
+                      <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                         {uploadedFiles.map((file) => (
-                          <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div className="flex-shrink-0">
+                          <div key={file.id} className="group flex items-start p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all duration-200">
+                            {/* File Icon */}
+                            <div className="flex-shrink-0 mr-3 sm:mr-4">
+                              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center ${
+                                file.mime_type?.includes('pdf') 
+                                  ? 'bg-red-50 border border-red-200' 
+                                  : file.mime_type?.includes('doc') 
+                                  ? 'bg-blue-50 border border-blue-200'
+                                  : 'bg-gray-50 border border-gray-200'
+                              }`}>
                                 {file.mime_type?.includes('pdf') ? (
-                                  <svg className="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                    <path d="M10.5,10.5H12.5V12.5H10.5V10.5M10.5,13.5H12.5V15.5H10.5V13.5M7.5,10.5H9.5V12.5H7.5V10.5M7.5,13.5H9.5V15.5H7.5V13.5" />
+                                  </svg>
+                                ) : file.mime_type?.includes('doc') ? (
+                                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                    <path d="M15,18H9V16H15V18M15,14H9V12H15V14M12,10H9V8H12V10Z" />
                                   </svg>
                                 ) : (
-                                  <svg className="w-8 h-8 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                                   </svg>
                                 )}
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">{file.file_name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {(file.file_size / 1024 / 1024).toFixed(2)} MB • {new Date(file.created_at).toLocaleDateString()}
-                                </p>
+                            </div>
+
+                            {/* File Info */}
+                            <div className="flex-1 min-w-0 mr-3">
+                              <div className="flex items-start justify-between mb-1">
+                                <h5 className="text-sm font-medium text-gray-900 truncate pr-2">{file.file_name}</h5>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium flex-shrink-0 ${
+                                  file.status === 'uploaded' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {file.status}
+                                </span>
+                              </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center text-xs text-gray-500 gap-1 sm:gap-4">
+                                <div className="flex items-center">
+                                  <svg className="w-3 h-3 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <span>{(file.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <svg className="w-3 h-3 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span>{new Date(file.created_at).toLocaleDateString()}</span>
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                file.status === 'uploaded' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {file.status}
-                              </span>
-                              {/* Only show download button on localhost */}
-                              {API_BASE_URL.includes('localhost') && (
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+                              {/* Download/View Button */}
+                              {API_BASE_URL.includes('localhost') ? (
                                 <button 
                                   onClick={() => window.open(`${API_BASE_URL.replace('/api', '')}${file.file_url}`, '_blank')}
-                                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-all"
+                                  className="p-1.5 sm:p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
                                   title="Download file"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
                                 </button>
+                              ) : (
+                                <span className="text-xs text-gray-400 px-2 py-1 bg-gray-100 rounded-md">View only</span>
                               )}
-                              {!API_BASE_URL.includes('localhost') && (
-                                <span className="text-xs text-gray-400 px-2">View only</span>
-                              )}
-                              {/* Delete button */}
+
+                              {/* Delete Button */}
                               <button 
                                 onClick={() => {
                                   if (window.confirm(`Are you sure you want to delete "${file.file_name}"?`)) {
                                     deleteUploadedFile(file.id, file.file_name);
                                   }
                                 }}
-                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"
+                                className="p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                 title="Delete file"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
