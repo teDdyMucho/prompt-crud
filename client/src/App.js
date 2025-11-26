@@ -36,8 +36,6 @@ function App() {
   const [kbTab, setKbTab] = useState('All');
   const [crawlerMode, setCrawlerMode] = useState('Exact URL');
   const [crawlerUrl, setCrawlerUrl] = useState('');
-  const [faqQ, setFaqQ] = useState('');
-  const [faqA, setFaqA] = useState('');
   const [rtName, setRtName] = useState('');
   const [rtBlock, setRtBlock] = useState('Paragraph');
   const [rtFamily, setRtFamily] = useState('Inter');
@@ -62,6 +60,13 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [savingRichText, setSavingRichText] = useState(false);
   const [editingRichTextId, setEditingRichTextId] = useState(null);
+  
+  // FAQ states
+  const [faqQuestion, setFaqQuestion] = useState('');
+  const [faqAnswer, setFaqAnswer] = useState('');
+  const [faqSources, setFaqSources] = useState([]);
+  const [savingFaq, setSavingFaq] = useState(false);
+  const [editingFaqId, setEditingFaqId] = useState(null);
 
   const updateInlineStates = () => {
     try {
@@ -336,6 +341,118 @@ function App() {
   useEffect(() => {
     if (kbTab === 'Rich Text' && selectedPrompt) {
       fetchRichTextSources(selectedPrompt.id);
+    }
+  }, [kbTab, selectedPrompt]);
+
+  // Fetch FAQ sources
+  const fetchFaqSources = async (promptId = null) => {
+    try {
+      log('FAQ:fetch:start', { promptId });
+      const url = promptId 
+        ? `${API_BASE_URL}/kb-faq-sources?prompt_id=${promptId}`
+        : `${API_BASE_URL}/kb-faq-sources`;
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const sources = await response.json();
+        setFaqSources(sources);
+        log('FAQ:fetch:success', { count: sources.length, sources });
+      } else {
+        throw new Error(`Failed to fetch FAQ sources: ${response.status}`);
+      }
+    } catch (error) {
+      logError('FAQ:fetch', error);
+      setFaqSources([]);
+    }
+  };
+
+  // Save FAQ source (CREATE or UPDATE)
+  const saveFaqSource = async () => {
+    if (!faqQuestion.trim() || !faqAnswer.trim()) {
+      log('FAQ:save:validation', { questionEmpty: !faqQuestion.trim(), answerEmpty: !faqAnswer.trim() });
+      return;
+    }
+
+    setSavingFaq(true);
+    try {
+      const isUpdate = editingFaqId !== null;
+      const method = isUpdate ? 'PUT' : 'POST';
+      const url = isUpdate 
+        ? `${API_BASE_URL}/kb-faq-sources/${editingFaqId}`
+        : `${API_BASE_URL}/kb-faq-sources`;
+
+      log('FAQ:save:start', { 
+        question: faqQuestion.substring(0, 50) + '...', 
+        answerLength: faqAnswer.length, 
+        promptId: selectedPrompt?.id,
+        isUpdate,
+        editingId: editingFaqId
+      });
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: faqQuestion,
+          answer: faqAnswer,
+          prompt_id: selectedPrompt?.id || null
+        }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        log('FAQ:save:success', { result, isUpdate });
+        
+        // Clear the form and reset editing state
+        setFaqQuestion('');
+        setFaqAnswer('');
+        setEditingFaqId(null);
+        
+        // Refresh the FAQ sources list
+        if (selectedPrompt) {
+          fetchFaqSources(selectedPrompt.id);
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`${isUpdate ? 'Update' : 'Save'} failed: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      logError('FAQ:save', error);
+    } finally {
+      setSavingFaq(false);
+    }
+  };
+
+  // Delete FAQ source
+  const deleteFaqSource = async (sourceId, sourceQuestion) => {
+    try {
+      log('FAQ:delete:start', { sourceId, sourceQuestion: sourceQuestion.substring(0, 50) + '...' });
+      
+      const response = await fetch(`${API_BASE_URL}/kb-faq-sources/${sourceId}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        log('FAQ:delete:success', { sourceId, sourceQuestion });
+        // Refresh the FAQ sources list
+        if (selectedPrompt) {
+          fetchFaqSources(selectedPrompt.id);
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Delete failed: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      logError('FAQ:delete', error);
+    }
+  };
+
+  // Fetch FAQ sources when FAQs tab is selected
+  useEffect(() => {
+    if (kbTab === 'FAQs' && selectedPrompt) {
+      fetchFaqSources(selectedPrompt.id);
     }
   }, [kbTab, selectedPrompt]);
 
@@ -1417,50 +1534,114 @@ function App() {
               )}
               {kbTab === 'FAQs' && (
                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow">
-                  <div className="flex items-start mb-5">
-                    <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
-                      <span className="text-gray-700 font-bold">?</span>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">FAQs</h3>
-                      <p className="text-gray-500">Write a question and answer pair to help your bot answer common questions.</p>
-                    </div>
-                  </div>
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex items-center mb-2">
-                        <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold mr-2">Q</span>
-                        <span className="text-xs text-gray-500">Your question</span>
+                  <div className="grid grid-cols-12 gap-6">
+                    {/* Sidebar Saved FAQs List */}
+                    <aside className="col-span-12 md:col-span-4 border border-gray-200 rounded-xl bg-gray-50 p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">Saved FAQs</h4>
+                      {faqSources.length === 0 ? (
+                        <div className="text-xs text-gray-400">No saved FAQs yet</div>
+                      ) : (
+                        <ul className="space-y-2 max-h-[400px] overflow-y-auto">
+                          {faqSources.map(item => (
+                            <li key={item.id}>
+                              <div className="flex items-start gap-2">
+                                <button
+                                  className="flex-1 text-left p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-100"
+                                  onClick={()=>{
+                                    setFaqQuestion(item.question);
+                                    setFaqAnswer(item.answer);
+                                    setEditingFaqId(item.id);
+                                    log('FAQ:load:existing', { id: item.id, question: item.question.substring(0, 50) + '...' });
+                                  }}
+                                >
+                                  <div className="text-sm font-medium text-gray-900 mb-1">{item.question}</div>
+                                  <div className="text-xs text-gray-500 line-clamp-2">{item.answer}</div>
+                                </button>
+                                <button
+                                  className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                                  title="Delete"
+                                  onClick={(e)=>{
+                                    e.stopPropagation();
+                                    if (window.confirm(`Are you sure you want to delete this FAQ?`)) {
+                                      deleteFaqSource(item.id, item.question);
+                                    }
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </aside>
+
+                    {/* FAQ Form Area */}
+                    <section className="col-span-12 md:col-span-8">
+                      <div className="flex items-start mb-5">
+                        <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center mr-3">
+                          <span className="text-gray-700 font-bold">?</span>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">FAQs</h3>
+                          <p className="text-gray-500">Write a question and answer pair to help your bot answer common questions.</p>
+                        </div>
                       </div>
-                      <textarea
-                        value={faqQ}
-                        onChange={(e)=>setFaqQ(e.target.value)}
-                        rows={4}
-                        placeholder="Your question goes here"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        maxLength={1000}
-                      />
-                      <div className="text-xs text-gray-400 text-right mt-1">{faqQ.length}/1000 characters</div>
-                    </div>
-                    <div>
-                      <div className="flex items-center mb-2">
-                        <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-green-50 text-green-600 text-xs font-semibold mr-2">A</span>
-                        <span className="text-xs text-gray-500">Your answer</span>
+                      <div className="space-y-6">
+                        <div>
+                          <div className="flex items-center mb-2">
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold mr-2">Q</span>
+                            <span className="text-xs text-gray-500">Your question</span>
+                          </div>
+                          <textarea
+                            value={faqQuestion}
+                            onChange={(e)=>setFaqQuestion(e.target.value)}
+                            rows={4}
+                            placeholder="Your question goes here"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            maxLength={1000}
+                          />
+                          <div className="text-xs text-gray-400 text-right mt-1">{faqQuestion.length}/1000 characters</div>
+                        </div>
+                        <div>
+                          <div className="flex items-center mb-2">
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-green-50 text-green-600 text-xs font-semibold mr-2">A</span>
+                            <span className="text-xs text-gray-500">Your answer</span>
+                          </div>
+                          <textarea
+                            value={faqAnswer}
+                            onChange={(e)=>setFaqAnswer(e.target.value)}
+                            rows={5}
+                            placeholder="Your answer goes here"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            maxLength={1000}
+                          />
+                          <div className="text-xs text-gray-400 text-right mt-1">{faqAnswer.length}/1000 characters</div>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-4">
+                          <button 
+                            className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" 
+                            onClick={()=>{
+                              setFaqQuestion('');
+                              setFaqAnswer('');
+                              setEditingFaqId(null);
+                              log('FAQ:cancel', { wasEditing: editingFaqId !== null });
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" 
+                            onClick={saveFaqSource}
+                            disabled={savingFaq || !faqQuestion.trim() || !faqAnswer.trim()}
+                          >
+                            {savingFaq ? (editingFaqId ? 'Updating...' : 'Saving...') : (editingFaqId ? 'Update' : 'Save')}
+                          </button>
+                        </div>
                       </div>
-                      <textarea
-                        value={faqA}
-                        onChange={(e)=>setFaqA(e.target.value)}
-                        rows={5}
-                        placeholder="Your answer goes here"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        maxLength={1000}
-                      />
-                      <div className="text-xs text-gray-400 text-right mt-1">{faqA.length}/1000 characters</div>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                      <button className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" onClick={()=>log('FAQs:cancel')}>Cancel</button>
-                      <button className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700" onClick={()=>log('FAQs:save',{ qLen: faqQ.length, aLen: faqA.length })}>Save</button>
-                    </div>
+                    </section>
                   </div>
                 </div>
               )}

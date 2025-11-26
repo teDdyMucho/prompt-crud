@@ -333,6 +333,109 @@ export async function handler(event) {
       return { statusCode: 204, headers: jsonHeaders, body: '' };
     }
 
+    // GET /api/kb-faq-sources -> list FAQ sources
+    if (event.httpMethod === 'GET' && subpath === '/kb-faq-sources') {
+      const { prompt_id } = event.queryStringParameters || {};
+
+      let query = supabase
+        .from('kb_faq_sources')
+        .select('id, question, answer, status, created_at, updated_at, prompt_id')
+        .order('created_at', { ascending: false });
+
+      // Filter by prompt_id if provided
+      if (prompt_id) {
+        query = query.eq('prompt_id', prompt_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data || []) };
+    }
+
+    // POST /api/kb-faq-sources -> create FAQ source
+    if (event.httpMethod === 'POST' && subpath === '/kb-faq-sources') {
+      const { question, answer, prompt_id } = JSON.parse(event.body || '{}');
+
+      if (!question || !question.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Question is required' }) };
+      }
+
+      if (!answer || !answer.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Answer is required' }) };
+      }
+
+      const { data, error } = await supabase
+        .from('kb_faq_sources')
+        .insert([{
+          question: question.trim(),
+          answer: answer.trim(),
+          status: 'active',
+          prompt_id: prompt_id ? parseInt(prompt_id) : null
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { statusCode: 201, headers: jsonHeaders, body: JSON.stringify(data) };
+    }
+
+    // PUT /api/kb-faq-sources/:id -> update FAQ source
+    const updateFaqMatch = event.httpMethod === 'PUT' && /^\/kb-faq-sources\/([^\/]+)$/.test(subpath);
+    if (updateFaqMatch) {
+      const id = subpath.split('/')[2];
+      const { question, answer, prompt_id } = JSON.parse(event.body || '{}');
+
+      if (!question || !question.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Question is required' }) };
+      }
+
+      if (!answer || !answer.trim()) {
+        return { statusCode: 400, headers: jsonHeaders, body: JSON.stringify({ error: 'Answer is required' }) };
+      }
+
+      const { data, error } = await supabase
+        .from('kb_faq_sources')
+        .update({
+          question: question.trim(),
+          answer: answer.trim(),
+          status: 'active',
+          updated_at: new Date().toISOString(),
+          prompt_id: prompt_id ? parseInt(prompt_id) : null
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'FAQ source not found' }) };
+        }
+        throw error;
+      }
+
+      return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify(data) };
+    }
+
+    // DELETE /api/kb-faq-sources/:id -> delete FAQ source
+    const deleteFaqMatch = event.httpMethod === 'DELETE' && /^\/kb-faq-sources\/([^\/]+)$/.test(subpath);
+    if (deleteFaqMatch) {
+      const id = subpath.split('/')[2];
+
+      const { error } = await supabase
+        .from('kb_faq_sources')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'FAQ source not found' }) };
+        }
+        throw error;
+      }
+
+      return { statusCode: 204, headers: jsonHeaders, body: '' };
+    }
+
     // Not found
     return { statusCode: 404, headers: jsonHeaders, body: JSON.stringify({ error: 'Not found', method: event.httpMethod, path: subpath }) };
   } catch (err) {

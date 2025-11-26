@@ -583,6 +583,147 @@ app.delete('/api/kb-rich-text-sources/:id', async (req, res) => {
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// GET FAQ sources from kb_faq_sources
+app.get('/api/kb-faq-sources', async (req, res) => {
+  try {
+    const { prompt_id } = req.query;
+
+    let query = supabase
+      .from('kb_faq_sources')
+      .select('id, question, answer, status, created_at, updated_at, prompt_id')
+      .order('created_at', { ascending: false });
+    
+    // Filter by prompt_id if provided
+    if (prompt_id) {
+      query = query.eq('prompt_id', prompt_id);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching FAQ sources:', error);
+      return res.status(500).json({ error: 'Failed to fetch FAQ sources' });
+    }
+
+    return res.json(data || []);
+  } catch (err) {
+    console.error('Unexpected error fetching FAQ sources:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
+// POST create FAQ source in kb_faq_sources
+app.post('/api/kb-faq-sources', async (req, res) => {
+  try {
+    const { question, answer, prompt_id } = req.body;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({ error: 'Question is required' });
+    }
+
+    if (!answer || !answer.trim()) {
+      return res.status(400).json({ error: 'Answer is required' });
+    }
+
+    console.log('Creating FAQ:', { question: question.substring(0, 50) + '...', prompt_id });
+
+    // Insert record into kb_faq_sources table
+    const { data, error } = await supabase
+      .from('kb_faq_sources')
+      .insert([{
+        question: question.trim(),
+        answer: answer.trim(),
+        status: 'active',
+        prompt_id: prompt_id ? parseInt(prompt_id) : null
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error inserting FAQ source:', error);
+      return res.status(500).json({ error: 'Failed to save FAQ source', details: error.message });
+    }
+
+    console.log('FAQ source created successfully:', data);
+    return res.status(201).json(data);
+  } catch (err) {
+    console.error('Unexpected error creating FAQ source:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
+// PUT update FAQ source in kb_faq_sources
+app.put('/api/kb-faq-sources/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { question, answer, prompt_id } = req.body;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({ error: 'Question is required' });
+    }
+
+    if (!answer || !answer.trim()) {
+      return res.status(400).json({ error: 'Answer is required' });
+    }
+
+    console.log('Updating FAQ:', { id, question: question.substring(0, 50) + '...', prompt_id });
+
+    // Update record in kb_faq_sources table
+    const { data, error } = await supabase
+      .from('kb_faq_sources')
+      .update({
+        question: question.trim(),
+        answer: answer.trim(),
+        status: 'active',
+        updated_at: new Date().toISOString(),
+        prompt_id: prompt_id ? parseInt(prompt_id) : null
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating FAQ source:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'FAQ source not found' });
+      }
+      return res.status(500).json({ error: 'Failed to update FAQ source', details: error.message });
+    }
+
+    console.log('FAQ source updated successfully:', data);
+    return res.status(200).json(data);
+  } catch (err) {
+    console.error('Unexpected error updating FAQ source:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
+// DELETE FAQ source from kb_faq_sources
+app.delete('/api/kb-faq-sources/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete the record from database
+    const { error } = await supabase
+      .from('kb_faq_sources')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'FAQ source not found' });
+      }
+      throw error;
+    }
+
+    console.log('FAQ source deleted successfully:', id);
+    return res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting FAQ source:', err);
+    return res.status(500).json({ error: 'Unexpected server error' });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
